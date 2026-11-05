@@ -1,0 +1,61 @@
+version: "3.8"
+
+# MiniSOC-AI Docker Compose Setup
+# Designed with strict RAM discipline for 8 GB RAM machines.
+# Targets are assigned to profiles so you only start what you are currently attacking/testing.
+#
+# Examples:
+#   Start Juice Shop only:   docker compose --profile juiceshop up -d
+#   Start DVWA only:         docker compose --profile dvwa up -d
+#   Stop all targets:        docker compose down
+
+services:
+  # OWASP Juice Shop: Modern vulnerable SPA (Node.js/Angular/SQLite)
+  # Excellent for XSS, SQLi, Broken Auth, NoSQLi, API abuse.
+  juiceshop:
+    image: bkimminich/juice-shop:v17.1.1
+    container_name: minisoc-juiceshop
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=unsafe
+    profiles:
+      - juiceshop
+      - targets
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 256M
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # DVWA (Damn Vulnerable Web Application): Classic PHP/MySQL vulnerable web app
+  # Ideal for brute force (Hydra), SQL injection (sqlmap), command injection, file inclusion.
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    container_name: minisoc-dvwa
+    ports:
+      - "8080:80"
+    profiles:
+      - dvwa
+      - targets
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 384M
+        reservations:
+          memory: 128M
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

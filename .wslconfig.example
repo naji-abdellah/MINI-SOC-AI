@@ -1,0 +1,32 @@
+# .wslconfig.example — WSL2 Resource Configuration for MiniSOC-AI
+# Target Machine Specs: 8 GB RAM, Intel Core i5 (10th Gen, 4 cores / 8 threads), No GPU.
+#
+# INSTRUCTIONS:
+# Copy this file to your Windows user profile root:
+#   PowerShell: Copy-Item .wslconfig.example $env:USERPROFILE\.wslconfig
+# Then restart WSL:
+#   wsl --shutdown
+#
+# WHY THIS MATTERS:
+# WSL2 dynamically consumes host RAM if unbounded. By setting a hard ceiling of 5 GB,
+# Windows always retains at least 3 GB for the OS, browser, and Ollama/Docker desktop.
+
+[wsl2]
+# Hard memory cap: 5 GB out of 8 GB physical RAM
+memory=5GB
+
+# Limit virtual processor count to leave headroom for host OS tasks
+processors=3
+
+# Swap space allocated on Windows SSD disk
+swap=2GB
+
+# Turn off swap file automatically growing beyond bounds
+swapFile=%USERPROFILE%\\.wsl_swap.vhdx
+
+# Enable localhost forwarding from WSL2 to Windows
+localhostForwarding=true
+
+# Experimental memory reclaim (available in newer WSL versions)
+[experimental]
+autoMemoryReclaim=gradual
