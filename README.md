@@ -103,8 +103,8 @@ minisoc-ai/
   - Schema normalization to ECS/OCSF standard; Apache, Docker JSON, SSH syslog parsers; defensive fallback; DuckDB analytical event store and CLI; break-it tests for out-of-order and hostile logs.
 - [x] **Milestone 2: Detection Engineering (Rules & MITRE ATT&CK)**
   - 10 Sigma-style rules mapped to MITRE tactics & techniques; vectorized DuckDB detection engine; automated positive/negative test fixtures; evasion break-it tests defeating URL-encoding and SQL comment obfuscation.
-- [ ] **Milestone 3: ML-Based Detection**
-  - Feature engineering; Isolation Forest vs XGBoost comparison on labeled attack datasets.
+- [x] **Milestone 3: ML-Based Detection**
+  - Feature engineering pipeline (entropy, lexical, rolling IP rates); Isolation Forest vs. XGBoost comparative evaluation on time-series splits; comprehensive evaluation report; break-it test demonstrating metrics collapse under attack distribution shift.
 - [ ] **Milestone 4: LLM Triage with RAG**
   - Local Ollama 3B triage pipeline with MITRE technique RAG and prompt injection defenses.
 - [ ] **Milestone 5: Guardrails, Evaluation & Auditability**

@@ -41,6 +41,7 @@ htmlcov/
 *.db
 chroma_db/
 faiss_index/
+ml/saved_models/*.joblib
 
 # Data directories (keep directory structure via .gitkeep, ignore actual bulk data)
 data/raw/*

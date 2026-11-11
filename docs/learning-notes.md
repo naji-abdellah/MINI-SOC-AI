@@ -130,3 +130,54 @@ This document captures reflections, surprises, breaking experiments, and key ins
 - [ ] Evaluate regex vs. substring query latency over 50,000+ events.
 - [ ] Explore recursive decoding for multi-layered encoding tricks (`%252e`).
 
+---
+
+## Milestone 3: Machine Learning-Based Detection
+
+### 1. Predict
+- **Question:** How do unsupervised anomaly detection (Isolation Forest) and supervised classification (XGBoost) compare on imbalanced security logs (~8% attacks)? What happens when the attack type in the test set differs from the training set?
+- **Hypothesis:** 
+  1. XGBoost will achieve near-perfect precision and recall on known attack patterns, whereas Isolation Forest will suffer from false positives because benign outliers get flagged as anomalies.
+  2. If the attack mix shifts (concept drift), XGBoost's recall will collapse because supervised models cannot recognize feature spaces they have never been trained on.
+  3. Random train/test splits cause data leakage in time-series logs; a strict chronological split is necessary.
+
+### 2. Build
+- **Dataset Generator (`ml/dataset.py`):** Generates realistic, time-ordered security logs with benign traffic, brute force, SQLi, LFI, scanners, and command injection under realistic class imbalance.
+- **Feature Engineering Pipeline (`ml/features.py`):**
+  - URL lexical features (length, Shannon entropy to detect hex/base64 obfuscation, suspicious token counts).
+  - Status codes and HTTP methods.
+  - Scanner user-agent matching.
+  - Rolling temporal window aggregations per IP (request frequency, error counts, error ratios over 60s windows).
+- **Models (`ml/models.py`):**
+  - `IsolationForestDetector`: Unsupervised outlier detector.
+  - `XGBoostDetector`: Supervised gradient-boosted tree classifier with automatic `scale_pos_weight` imbalance correction.
+  - Model persistence via `joblib`.
+- **Evaluation & Reporting (`ml/evaluate.py`):**
+  - Temporal 70/30 train/test split.
+  - Full metrics suite: Confusion Matrix, Precision, Recall, F1, FPR, ROC-AUC, PR-AUC, and scoring latency (~4-10 microseconds/event).
+  - Comprehensive report saved to [`docs/ml-evaluation-report.md`](docs/ml-evaluation-report.md).
+- **Test Suite:** 6 new unit and break-it tests in `tests/test_ml.py` and `tests/test_ml_break_it.py`.
+
+### 3. Break it on Purpose
+- **Exercise: Attack Mix Shift & Distribution Collapse (`tests/test_ml_break_it.py`):**
+  - Trained XGBoost on benign traffic + SQLi + Brute Force (excluding Command Injection).
+  - Evaluated on a test set containing benign traffic + novel Command Injection (`cat /etc/passwd`).
+  - *Observation:* XGBoost achieved $\ge 90\%$ recall on in-distribution attacks, but its recall collapsed significantly (>20% degradation) on the novel command injection attack!
+  - *Root Cause:* The decision trees learned splits based on SQL keywords (`union`, `select`) and POST login rates. When confronted with command injection shell metacharacters, the model had a complete blindspot and classified the attacks as benign!
+- **Data Engineering Gotcha:**
+  - NumPy 2.x changed datetime dtype checks (`np.issubdtype` failed on timezone-aware `datetime64[us, UTC]`). Fixed by migrating to `pd.api.types.is_datetime64_any_dtype`.
+
+### 4. Explain it Back
+- **The Paradox of False Positive Rates in SOCs:**
+  - A 1% False Positive Rate (FPR) sounds great in academia. In an enterprise processing 10,000,000 logs daily, a 1% FPR produces **100,000 false alarms every day**, causing fatal alert fatigue. This is why **Precision** and **Precision-Recall AUC (PR-AUC)** are the true indicators of SOC model viability.
+- **Unsupervised vs. Supervised Roles in a SOC:**
+  - Unsupervised models (Isolation Forest) flag *rarity*, not *malice*. They are noisy as primary alert generators, but valuable as secondary tripwires to highlight unusual traffic that bypassed deterministic rules.
+  - Supervised models (XGBoost) provide pinpoint precision on known attack patterns, but cannot defend against zero-day attacks without continuous retraining.
+- **Why Temporal Splits are Mandatory:**
+  - Standard k-fold cross-validation randomly shuffles logs, allowing future context (e.g. an IP's subsequent error burst) to leak into past predictions. In real SOC engineering, models must always be evaluated by training on the past and testing on the future.
+
+### 5. Review (Scheduled)
+- [ ] Measure XGBoost inference latency under multithreaded batch scoring on 100,000 events.
+- [ ] Investigate threshold tuning via Precision-Recall curves to trade off recall for near-zero false alarms.
+
+
