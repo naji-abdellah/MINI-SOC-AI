@@ -1,0 +1,58 @@
+[
+  {
+    "id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactic": "Initial Access",
+    "description": "Adversaries may attempt to exploit vulnerabilities in Internet-facing software (web applications, APIs) to gain initial access. Common vectors include SQL Injection (SQLi), Cross-Site Scripting (XSS), and unauthenticated API flaws.",
+    "detection": "Monitor application logs for database error responses (HTTP 500), SQL syntax tokens (UNION SELECT, OR 1=1), and abnormal query lengths. Inspect WAF and proxy logs for automated injection tools.",
+    "mitigation": "Enforce parameterized queries (prepared statements), input validation, WAF filtering, and least-privilege database user permissions."
+  },
+  {
+    "id": "T1083",
+    "name": "File and Directory Discovery",
+    "tactic": "Discovery",
+    "description": "Adversaries may enumerate files and directories or exploit Path Traversal / Local File Inclusion (LFI) to read sensitive system configuration, application source code, or credentials (such as /etc/passwd, .env, or wp-config.php).",
+    "detection": "Detect repeated directory traversal sequences (../, ..%2f), requests for hidden directories (/.git/, /.env), and attempts to load system files via web query parameters.",
+    "mitigation": "Sanitize user-supplied file path parameters, disable directory browsing, restrict web server file system permissions using chroot or container isolation."
+  },
+  {
+    "id": "T1110.001",
+    "name": "Brute Force: Password Guessing",
+    "tactic": "Credential Access",
+    "description": "Adversaries with no prior knowledge of passwords may attempt to guess credentials by systematically testing many common passwords against one or more user accounts (SSH, web login portals, API keys).",
+    "detection": "Correlate rapid bursts of failed authentication attempts (SSH Failed password or HTTP 401/403) from a single IP address within a short timeframe.",
+    "mitigation": "Enforce account lockouts or progressive delays, implement Multi-Factor Authentication (MFA), rate-limit login endpoints, and deploy IP auto-banning (e.g., Fail2Ban)."
+  },
+  {
+    "id": "T1059",
+    "name": "Command and Scripting Interpreter",
+    "tactic": "Execution",
+    "description": "Adversaries may abuse command and script interpreters to execute arbitrary commands on a host, commonly via web application OS command injection (using shell metacharacters ;, |, &&).",
+    "detection": "Monitor web server child processes executing unexpected shell commands (cat /etc, whoami, nc, /bin/sh, ping -c) and inspect parameters for shell separators.",
+    "mitigation": "Avoid invoking shell interpreters from application code, use strongly typed process execution APIs with fixed arguments, and run web services as unprivileged service accounts."
+  },
+  {
+    "id": "T1595.002",
+    "name": "Active Scanning: Vulnerability Scanning",
+    "tactic": "Reconnaissance",
+    "description": "Adversaries may scan public infrastructure with automated tools (sqlmap, Nikto, Gobuster, DirBuster, Hydra) to find accessible paths, misconfigurations, and known vulnerabilities.",
+    "detection": "Search web access logs for known automated vulnerability scanner User-Agent signatures and bursts of rapid 404/403 responses exploring non-existent endpoints.",
+    "mitigation": "Block known malicious scanner User-Agents at the edge/reverse proxy, implement rate-limiting, and use threat intelligence IP reputation feeds."
+  },
+  {
+    "id": "T1078",
+    "name": "Valid Accounts",
+    "tactic": "Initial Access / Persistence",
+    "description": "Adversaries may obtain credentials through brute force, credential dumping, or phishing and use them to gain legitimate access to accounts, often blending in with normal user activity.",
+    "detection": "Correlate successful logins immediately following bursts of authentication failures from the same source IP, or logins from unusual locations and times.",
+    "mitigation": "Enforce MFA, monitor for impossible travel, and automatically reset passwords on accounts subjected to sustained brute force."
+  },
+  {
+    "id": "T1003",
+    "name": "OS Credential Dumping",
+    "tactic": "Credential Access",
+    "description": "Adversaries may attempt to dump credentials from operating system files (e.g. /etc/shadow, SAM and SYSTEM registry hives) to obtain password hashes for offline cracking.",
+    "detection": "Alert on web requests or file access attempts targeting /etc/shadow, SAM hives, or LSASS memory access.",
+    "mitigation": "Restrict file permissions strictly to root/SYSTEM, enable host-based endpoint detection (EDR), and ensure credential files cannot be read by web processes."
+  }
+]

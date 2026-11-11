@@ -1,0 +1,66 @@
+[
+  {
+    "id": "runbook-sqli-01",
+    "name": "SQL Injection Incident Response Runbook",
+    "applicable_techniques": ["T1190"],
+    "severity": "HIGH",
+    "immediate_actions": [
+      "Verify whether the application returned database errors (HTTP 500) or database responses.",
+      "Check database query audit logs to determine if queries returned unauthorized rows or modified tables.",
+      "Block the attacking source IP address at the firewall/WAF.",
+      "Notify the development team to patch the vulnerable endpoint with prepared statements."
+    ],
+    "containment_options": ["block_ip", "notify_analyst"]
+  },
+  {
+    "id": "runbook-auth-02",
+    "name": "Brute Force and Credential Spray Runbook",
+    "applicable_techniques": ["T1110.001", "T1078"],
+    "severity": "HIGH",
+    "immediate_actions": [
+      "Identify all usernames targeted by the attacking IP.",
+      "Verify whether any subsequent login from the attacking IP succeeded.",
+      "If a login succeeded: immediately terminate active user sessions and trigger a forced password reset.",
+      "Add the offending IP address to the temporary blocklist (Fail2Ban/firewall)."
+    ],
+    "containment_options": ["block_ip", "reset_credentials", "notify_analyst"]
+  },
+  {
+    "id": "runbook-lfi-03",
+    "name": "Path Traversal and LFI Runbook",
+    "applicable_techniques": ["T1083", "T1003"],
+    "severity": "HIGH",
+    "immediate_actions": [
+      "Check the HTTP response status and byte size to determine if sensitive files were leaked.",
+      "If /etc/passwd or application config (.env) was accessed, check for subsequent unauthorized use of leaked credentials.",
+      "Block the source IP and verify web root directory traversal restrictions."
+    ],
+    "containment_options": ["block_ip", "notify_analyst"]
+  },
+  {
+    "id": "runbook-cmdi-04",
+    "name": "OS Command Injection Critical Response Runbook",
+    "applicable_techniques": ["T1059"],
+    "severity": "CRITICAL",
+    "immediate_actions": [
+      "Assume potential Remote Code Execution (RCE) on the host.",
+      "Immediately isolate the affected host/container from the internal network.",
+      "Inspect running processes, network connections (netstat/ss), and cron jobs for reverse shells or backdoors.",
+      "Block the attacker IP and escalate to the Incident Response lead."
+    ],
+    "containment_options": ["isolate_host", "block_ip", "notify_analyst"]
+  },
+  {
+    "id": "runbook-scanner-05",
+    "name": "Automated Scanner and Reconnaissance Runbook",
+    "applicable_techniques": ["T1595.002"],
+    "severity": "MEDIUM",
+    "immediate_actions": [
+      "Review the probe sequence to verify all requests received 403 or 404 responses.",
+      "Verify that no endpoints returned 200 OK with sensitive disclosures (e.g. phpinfo or .git).",
+      "If scanner persists beyond 100 requests: temporarily rate-limit or block the source IP.",
+      "If all probes failed and attack stopped, mark as low priority / monitored."
+    ],
+    "containment_options": ["block_ip", "dismiss_alert", "notify_analyst"]
+  }
+]
