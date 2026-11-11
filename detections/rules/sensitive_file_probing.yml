@@ -1,0 +1,28 @@
+id: soc-rule-recon-007
+title: Sensitive Configuration and Credential File Probing
+description: Detects directory enumeration and requests targeting sensitive configuration files, environment variables, or private keys.
+author: Naji Abdellah
+status: stable
+severity: high
+references:
+  - https://attack.mitre.org/techniques/T1083/
+tags:
+  - reconnaissance
+  - config-leak
+mitre:
+  tactic: Discovery
+  technique_id: T1083
+  technique_name: File and Directory Discovery
+detection:
+  type: pattern
+  event_category: web
+  url_patterns:
+    - "/.env"
+    - "/.git/"
+    - "/wp-config.php"
+    - "/id_rsa"
+    - "/phpinfo.php"
+    - "/.aws/credentials"
+    - "/config.json"
+falsepositives:
+  - Broken internal links or developers testing localhost setups.

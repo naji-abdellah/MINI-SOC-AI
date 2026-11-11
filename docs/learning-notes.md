@@ -76,3 +76,57 @@ This document captures reflections, surprises, breaking experiments, and key ins
 ### 5. Review (Scheduled)
 - [ ] Benchmark DuckDB ingestion throughput on 10,000+ events.
 - [ ] Measure memory footprint during bulk imports.
+
+---
+
+## Milestone 2: Detection Engineering (Rules & MITRE ATT&CK)
+
+### 1. Predict
+- **Question:** How do Sigma-style detection rules map to MITRE ATT&CK tactics and techniques? Can basic string-matching rules be evaded by attackers using simple encoding or comment tricks?
+- **Hypothesis:** 
+  1. Declarative YAML rules can be compiled directly into high-speed SQL queries over DuckDB events.
+  2. Naive keyword matching (e.g., searching for `../` or `union select`) will be blind to standard evasion techniques like URL hex-encoding (`%2e%2e%2f`) or inline SQL comments (`uNiOn/**/sElEcT`).
+  3. Pre-normalizing data during rule evaluation (URL decoding, whitespace collapsing) can defeat these evasions without ballooning database storage.
+
+### 2. Build
+- **Rule & Alert Specification (`detections/rule_schema.py`):** Pydantic models defining Sigma-style rules with explicit MITRE ATT&CK mappings (tactic, technique ID, technique name). Implemented deterministic SHA-256 fingerprinting for alerts to guarantee idempotency.
+- **Vectorized Detection Engine (`detections/engine.py`):**
+  - Compiles pattern matches, sliding-window thresholds, and multi-event correlations into DuckDB SQL.
+  - Generates structured alerts and writes them to an index-backed `alerts` table in DuckDB.
+  - Implements MITRE ATT&CK coverage aggregation.
+- **10 Core Sigma-Style Rules (`detections/rules/*.yml`):**
+  - `soc-rule-sqli-001`: SQL Injection (`T1190` - Exploit Public-Facing Application)
+  - `soc-rule-lfi-002`: Path Traversal / LFI (`T1083` - File & Directory Discovery)
+  - `soc-rule-auth-003`: SSH Brute Force (`T1110.001` - Password Guessing)
+  - `soc-rule-web-004`: Web Login Brute Force (`T1110.001` - Password Guessing)
+  - `soc-rule-exec-005`: OS Command Injection (`T1059` - Command & Scripting Interpreter)
+  - `soc-rule-recon-006`: Automated Scanners: sqlmap, Nikto (`T1595.002` - Active Vulnerability Scanning)
+  - `soc-rule-recon-007`: Sensitive Config Probing: `.env`, `.git` (`T1083` - File & Directory Discovery)
+  - `soc-rule-xss-008`: Cross-Site Scripting Tags (`T1190` - Exploit Public-Facing Application)
+  - `soc-rule-corr-009`: Valid Account Login After Failures (`T1078` - Valid Accounts correlation)
+  - `soc-rule-cred-010`: Sensitive OS Credential Store Probing (`T1003` - OS Credential Dumping)
+- **CLI (`detections/cli.py`):** Command-line tool to run all rules and render the active alert queue and MITRE coverage table.
+- **Automated Test Suite:** 10 new unit and break-it tests covering positive matches, negative benign false-positive immunity, alert idempotency, and evasion defenses.
+
+### 3. Break it on Purpose
+- **Exercise 1: URL-Encoded Traversal Evasion (`%2e%2e%2f`):**
+  - Sent `GET /vulnerabilities/fi/?page=%2e%2e%2f%2e%2e%2fetc/passwd`.
+  - *Observation:* A naive rule checking only `http_url LIKE '%../%'` resulted in a **False Negative** (completely evaded).
+  - *Resolution:* Hardened the engine compiler to evaluate both raw `http_url` and `lower(url_decode(http_url))`, instantly catching the attack.
+- **Exercise 2: SQL Inline Comment & Mixed-Casing Evasion (`uNiOn/**/sElEcT`):**
+  - Sent `id=1'/**/uNiOn/**/sElEcT/**/null,version()--`.
+  - *Observation:* Naive matching for `"union select"` with single spaces failed completely.
+  - *Resolution:* Enhanced the SQL compilation to normalize inline comments (`replace(..., '/**/', ' ')`) and case-flatten prior to evaluation, restoring 100% detection recall.
+- **Exercise 3: DuckDB Cursor Concurrency Conflict:**
+  - In unit tests, executing a query on `conn` without closing its cursor caused `ResourceInUseException` during DataFrame batch registration. Enforced strict cursor opening/closing lifecycles in `DetectionEngine`.
+
+### 4. Explain it Back
+- **Detection-as-Code:** Rules are code. They must be version-controlled, declarative, mapped to standard threat frameworks (MITRE ATT&CK), and tested against both malicious fixtures (to verify recall) and benign fixtures (to verify zero false positives).
+- **Correlation Rules:** Single-event matching is insufficient. Complex attacks require temporal correlation: for example, connecting multiple authentication failures with a subsequent successful login from the same IP to detect account compromise.
+- **Input Sanitization in Detections:** Attackers rarely send plaintext signatures. Normalizing incoming attributes (URL decoding, comment removal, whitespace collapsing) at query time is what separates toy regexes from production SIEM rules.
+- **Alert Idempotency:** Running a detection scan over historical logs must not create duplicate alerts. Generating deterministic alert IDs from `hash(rule_id + matched_event_ids)` ensures clean, deduplicated alert queues.
+
+### 5. Review (Scheduled)
+- [ ] Evaluate regex vs. substring query latency over 50,000+ events.
+- [ ] Explore recursive decoding for multi-layered encoding tricks (`%252e`).
+

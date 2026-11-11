@@ -1,0 +1,32 @@
+id: soc-rule-exec-005
+title: OS Command Injection via Web Parameters
+description: Detects shell metacharacters and dangerous operating system commands passed inside web requests.
+author: Naji Abdellah
+status: stable
+severity: critical
+references:
+  - https://attack.mitre.org/techniques/T1059/
+  - https://owasp.org/www-community/attacks/Command_Injection
+tags:
+  - web
+  - rce
+  - command-injection
+mitre:
+  tactic: Execution
+  technique_id: T1059
+  technique_name: Command and Scripting Interpreter
+detection:
+  type: pattern
+  event_category: web
+  url_patterns:
+    - ";cat /etc"
+    - "; cat /etc"
+    - ";whoami"
+    - "; whoami"
+    - "nc -e"
+    - "| /bin/sh"
+    - "; id;"
+    - ";id"
+    - "ip=127.0.0.1;"
+falsepositives:
+  - Internal IT health check scripts passing parameters into administrative web endpoints.

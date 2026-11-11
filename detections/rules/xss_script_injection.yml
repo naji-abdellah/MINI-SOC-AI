@@ -1,0 +1,28 @@
+id: soc-rule-xss-008
+title: Cross-Site Scripting (XSS) Tag Injection
+description: Detects HTML/JavaScript injection patterns inside HTTP request URLs.
+author: Naji Abdellah
+status: stable
+severity: medium
+references:
+  - https://attack.mitre.org/techniques/T1190/
+  - https://attack.mitre.org/techniques/T1059/007/
+tags:
+  - web
+  - xss
+mitre:
+  tactic: Initial Access
+  technique_id: T1190
+  technique_name: Exploit Public-Facing Application
+detection:
+  type: pattern
+  event_category: web
+  url_patterns:
+    - "<script"
+    - "javascript:"
+    - "onerror="
+    - "onload="
+    - "<img src="
+    - "alert("
+falsepositives:
+  - CMS content editors or technical blogs posting sample code snippets.

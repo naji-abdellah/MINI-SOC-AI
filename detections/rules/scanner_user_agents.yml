@@ -1,0 +1,30 @@
+id: soc-rule-recon-006
+title: Automated Vulnerability Scanner User Agent
+description: Identifies known automated web vulnerability scanners and reconnaissance tools based on User-Agent header signatures.
+author: Naji Abdellah
+status: stable
+severity: medium
+references:
+  - https://attack.mitre.org/techniques/T1595/002/
+tags:
+  - reconnaissance
+  - scanner
+  - user-agent
+mitre:
+  tactic: Reconnaissance
+  technique_id: T1595.002
+  technique_name: "Active Scanning: Vulnerability Scanning"
+detection:
+  type: pattern
+  event_category: web
+  user_agent_patterns:
+    - "sqlmap"
+    - "nikto"
+    - "gobuster"
+    - "dirbuster"
+    - "hydra"
+    - "nmap"
+    - "nessus"
+    - "openvas"
+falsepositives:
+  - Internal authorized security assessments and penetration tests conducted by the security team.

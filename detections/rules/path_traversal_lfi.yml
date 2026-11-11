@@ -1,0 +1,30 @@
+id: soc-rule-lfi-002
+title: Path Traversal and Local File Inclusion (LFI)
+description: Detects directory traversal sequences and attempts to retrieve sensitive operating system files or utilize PHP wrappers.
+author: Naji Abdellah
+status: stable
+severity: high
+references:
+  - https://attack.mitre.org/techniques/T1083/
+  - https://owasp.org/www-community/attacks/Path_Traversal
+tags:
+  - web
+  - traversal
+  - lfi
+mitre:
+  tactic: Discovery
+  technique_id: T1083
+  technique_name: File and Directory Discovery
+detection:
+  type: pattern
+  event_category: web
+  url_patterns:
+    - "../"
+    - "..%2f"
+    - "/etc/passwd"
+    - "/etc/shadow"
+    - "php://filter"
+    - "win.ini"
+    - "boot.ini"
+falsepositives:
+  - Applications using query parameters with relative links in legitimate documentation.

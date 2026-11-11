@@ -1,0 +1,26 @@
+id: soc-rule-auth-003
+title: SSH Authentication Brute Force
+description: Detects multiple failed SSH authentication attempts from a single source IP address indicating password guessing or credential spraying.
+author: Naji Abdellah
+status: stable
+severity: high
+references:
+  - https://attack.mitre.org/techniques/T1110/001/
+tags:
+  - authentication
+  - ssh
+  - brute-force
+mitre:
+  tactic: Credential Access
+  technique_id: T1110.001
+  technique_name: "Brute Force: Password Guessing"
+detection:
+  type: threshold
+  event_category: authentication
+  event_outcome: failure
+  time_window_seconds: 300
+  threshold_count: 3
+  group_by:
+    - source_ip
+falsepositives:
+  - Users forgetting passwords or automated deployment scripts with expired credentials.

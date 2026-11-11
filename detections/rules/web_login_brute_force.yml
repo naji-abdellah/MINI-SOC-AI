@@ -1,0 +1,34 @@
+id: soc-rule-web-004
+title: Web Application Login Brute Force
+description: Detects repeated failed HTTP POST requests targeting authentication endpoints from the same client IP.
+author: Naji Abdellah
+status: stable
+severity: medium
+references:
+  - https://attack.mitre.org/techniques/T1110/001/
+tags:
+  - web
+  - authentication
+  - brute-force
+mitre:
+  tactic: Credential Access
+  technique_id: T1110.001
+  technique_name: "Brute Force: Password Guessing"
+detection:
+  type: threshold
+  event_category: web
+  http_methods:
+    - POST
+  url_patterns:
+    - "/login"
+    - "/rest/user/login"
+    - "/api/v1/auth"
+  status_codes:
+    - 401
+    - 403
+  time_window_seconds: 300
+  threshold_count: 3
+  group_by:
+    - source_ip
+falsepositives:
+  - Misconfigured frontend caching or users with faulty password autofill.

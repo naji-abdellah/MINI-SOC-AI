@@ -1,0 +1,36 @@
+id: soc-rule-corr-009
+title: Successful Login Following Authentication Failures
+description: Correlates a successful authentication event with prior consecutive failures from the same source IP, indicating a compromised account via password guessing.
+author: Naji Abdellah
+status: stable
+severity: critical
+references:
+  - https://attack.mitre.org/techniques/T1110/
+  - https://attack.mitre.org/techniques/T1078/
+tags:
+  - correlation
+  - brute-force
+  - account-compromise
+mitre:
+  tactic: Credential Access
+  technique_id: T1078
+  technique_name: Valid Accounts
+detection:
+  type: correlation
+  custom_sql: |
+    SELECT s.source_ip,
+           s.user_name as target_users,
+           count(f.event_id) as event_count,
+           min(f.timestamp) as first_seen,
+           max(s.timestamp) as last_seen,
+           list(f.event_id) || [s.event_id] as matched_event_ids,
+           'Account ' || coalesce(s.user_name, 'unknown') || ' logged in successfully after ' || count(f.event_id) || ' failed attempts' as sample_evidence
+    FROM events s
+    JOIN events f ON s.source_ip = f.source_ip
+    WHERE s.event_category = 'authentication' AND s.event_outcome = 'success'
+      AND f.event_category = 'authentication' AND f.event_outcome = 'failure'
+      AND f.timestamp < s.timestamp
+    GROUP BY s.source_ip, s.user_name, s.event_id
+    HAVING count(f.event_id) >= 2
+falsepositives:
+  - Legitimate user mistyping password twice before typing it correctly.

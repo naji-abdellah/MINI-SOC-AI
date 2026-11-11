@@ -1,0 +1,29 @@
+id: soc-rule-sqli-001
+title: SQL Injection Payload Probing
+description: Detects common SQL injection indicators in URL query parameters including UNION SELECT, boolean tautologies, and database enumeration signatures.
+author: Naji Abdellah
+status: stable
+severity: high
+references:
+  - https://attack.mitre.org/techniques/T1190/
+  - https://owasp.org/www-community/attacks/SQL_Injection
+tags:
+  - web
+  - sqli
+  - owasp-top10
+mitre:
+  tactic: Initial Access
+  technique_id: T1190
+  technique_name: Exploit Public-Facing Application
+detection:
+  type: pattern
+  event_category: web
+  url_patterns:
+    - "union select"
+    - "' or 1=1"
+    - "' or '1'='1"
+    - "information_schema"
+    - "sleep("
+    - "version()"
+falsepositives:
+  - Internal database administration tools (phpMyAdmin) accessed by authorized engineers.
