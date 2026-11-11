@@ -55,6 +55,7 @@ logs/
 *.pcap
 *.evtx
 *.zst
+!data/samples/*.log
 
 # Environment variables & secrets
 .env

@@ -1,0 +1,7 @@
+{"log":"GET /rest/products/search?q=apple 200 12.3 ms - 452\n","stream":"stdout","time":"2026-11-05T01:20:00.123456789Z"}
+{"log":"GET /rest/products/search?q=banana 200 8.1 ms - 410\n","stream":"stdout","time":"2026-11-05T01:20:15.000000000Z"}
+{"log":"::ffff:192.168.1.105 POST /rest/user/login 401 24.5 ms - 32\n","stream":"stdout","time":"2026-11-05T01:22:00.000000000Z"}
+{"log":"::ffff:192.168.1.105 POST /rest/user/login 401 22.1 ms - 32\n","stream":"stdout","time":"2026-11-05T01:22:02.000000000Z"}
+{"log":"::ffff:192.168.1.105 POST /rest/user/login 401 19.8 ms - 32\n","stream":"stdout","time":"2026-11-05T01:22:04.000000000Z"}
+{"log":"::ffff:192.168.1.105 POST /rest/user/login 200 45.0 ms - 250\n","stream":"stdout","time":"2026-11-05T01:22:10.000000000Z"}
+{"log":"::ffff:192.168.1.105 GET /rest/products/search?q='%20OR%201=1-- 200 120.4 ms - 9820\n","stream":"stdout","time":"2026-11-05T01:23:00.000000000Z"}

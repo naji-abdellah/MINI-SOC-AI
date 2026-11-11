@@ -1,0 +1,6 @@
+# Malformed log samples for Break-It Exercise
+192.168.1.99 - - [99/99/9999:99:99:99 +9999] "GET /broken-date HTTP/1.1" 500 10
+192.168.1.99 - - [05/Nov/2026:01:41:00 +0000] "GET /incomplete-request
+192.168.1.99 - - [05/Nov/2026:01:42:00 +0000] "POST /upload HTTP/1.1" STATUS_CODE_NOT_INT 0
+{"timestamp": "2026-11-05T01:45:00Z", "unclosed_json": true
+PLAIN TEXT JIBBERISH WITHOUT ANY LOG STRUCTURE AT ALL

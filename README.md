@@ -99,8 +99,8 @@ minisoc-ai/
 
 - [x] **Milestone 0: Environment & Repo Setup**
   - Git repository structure, strict `.gitignore`, `.wslconfig.example`, resource-capped `docker-compose.yml`, architecture docs, learning journal.
-- [ ] **Milestone 1: Logs & Normalization (SIEM Fundamentals)**
-  - Vulnerable apps running; attack generation; schema normalization to ECS/OCSF standard; DuckDB storage.
+- [x] **Milestone 1: Logs & Normalization (SIEM Fundamentals)**
+  - Schema normalization to ECS/OCSF standard; Apache, Docker JSON, SSH syslog parsers; defensive fallback; DuckDB analytical event store and CLI; break-it tests for out-of-order and hostile logs.
 - [ ] **Milestone 2: Detection Engineering (Rules & MITRE ATT&CK)**
   - 8–15 Sigma-style rules mapped to MITRE tactics & techniques with unit tests.
 - [ ] **Milestone 3: ML-Based Detection**

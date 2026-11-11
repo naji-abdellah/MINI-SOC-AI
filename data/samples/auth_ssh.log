@@ -1,0 +1,6 @@
+Nov  5 01:30:00 victim sshd[2001]: Failed password for invalid user root from 192.168.1.150 port 38210 ssh2
+Nov  5 01:30:02 victim sshd[2002]: Failed password for invalid user admin from 192.168.1.150 port 38212 ssh2
+Nov  5 01:30:04 victim sshd[2003]: Failed password for invalid user oracle from 192.168.1.150 port 38214 ssh2
+Nov  5 01:30:06 victim sshd[2004]: Failed password for invalid user postgres from 192.168.1.150 port 38216 ssh2
+Nov  5 01:30:08 victim sshd[2005]: Failed password for test from 192.168.1.150 port 38218 ssh2
+Nov  5 01:35:00 victim sshd[2010]: Accepted password for student from 192.168.1.50 port 49120 ssh2
