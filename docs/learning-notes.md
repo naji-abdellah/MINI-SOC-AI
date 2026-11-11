@@ -223,3 +223,78 @@ This document captures reflections, surprises, breaking experiments, and key ins
 
 
 
+
+---
+
+## Milestone 5: Guardrails, Evaluation & Auditability
+
+### 1. Predict
+- **Question:** If we let the LLM suggest any free-text action string, what could go wrong?
+- **Hypothesis:** A model (or adversary injecting text into an alert field) could suggest unauthorized actions like `"delete_all_logs"`, `"rm -rf /"`, or `"exfiltrate_data"`. Without a strict allow-list, the downstream automation would have no way to distinguish authorized from dangerous actions.
+
+### 2. Build
+Four interacting components built:
+
+**A. PolicyEnforcer (`guardrails/policy.py`)**
+- Derives its allow-list dynamically from the `AllowedAction` Literal type in `llm/schemas.py`.
+- `validate_action()` checks membership in a `frozenset` (O(1) lookup).
+- `sanitize_report()` returns an immutable copy with the forbidden action replaced by `notify_analyst` and a prepended `[POLICY]` note in `reasoning`.
+- Key design: the allow-list and the Pydantic schema literal are the **same source of truth** — no string duplication that could drift.
+
+**B. ApprovalGate (`guardrails/approval.py`)**
+- `ApprovalRequest` Pydantic model tracks lifecycle: `pending` → `approved` / `rejected`.
+- DuckDB-backed (`approvals` table) so records survive process restarts.
+- Analyst identity and timestamp are recorded on every state transition.
+- In-memory mode (`:memory:`) used in tests for isolation.
+
+**C. AuditLog (`guardrails/audit_log.py`)**
+- Blockchain-style JSONL file: each entry stores `prev_hash` (SHA-256 of the previous entry) and `entry_hash` (SHA-256 of `prev_hash + canonical_payload_json`).
+- Genesis block uses `"0" * 64` as `prev_hash`.
+- `verify_chain()` replays all hashes from scratch and reports the first corrupted index.
+- Payload is serialized with `sort_keys=True, separators=(",",":")` for determinism.
+
+**D. HallucinationChecker + EvalRunner (`evals/hallucination_checker.py`)**
+- Four structural checks: MITRE ID in knowledge base, action in allow-list, non-empty steps, confidence in [0, 1].
+- `EvalRunner` distinguishes cases that *expect* hallucinations (break-it injection) from clean cases, computing both a pass rate and a hallucination rate.
+- 12-case annotated `test_cases.json` covering normal triage and all 4 hallucination types.
+
+**E. Pipeline Integration (`llm/triage.py`)**
+- `TriageCoordinator.triage_alert()` now runs all 6 steps: RAG → prompt → LLM → policy → approval → audit.
+- Existing tests remain passing because guardrail components default to in-memory/temp-file operation.
+
+### 3. Break it on Purpose
+**Exercise: Tamper Detection (`test_audit_tamper_detection`)**
+
+```
+1. Append 5 entries to audit log — verify_chain() returns (True, None).
+2. Open JSONL file, mutate the payload of entry index=2 (seq: 2 → seq: 101)
+   without updating its entry_hash.
+3. Call verify_chain() again.
+   Expected: (False, 2) — broken at the mutated entry.
+   Actual:   (False, 2) ✅
+```
+
+**Why it works:** `verify_chain()` recomputes `SHA256(prev_hash + canonical_payload)` for every entry. When entry 2's payload changes, its recomputed hash differs from the stored `entry_hash`, immediately flagging that exact index. All subsequent entries are also invalid (their `prev_hash` references the original — now stale — hash), but we report only the *first* break to pinpoint the tampered record.
+
+**Why this matters for SOC:** Audit logs are only trustworthy if tampering is detectable. A SIEM that keeps mutable logs provides only a false sense of accountability. Hash chains transform a simple file into a cryptographic chain of custody.
+
+### 4. Explain it Back
+- **Policy Enforcement:** An LLM is a stochastic function — it can output anything. The guardrail is not "trust the LLM to stay on the list", it's "accept only pre-approved outputs regardless of what the model said".
+- **Human-in-the-Loop:** Every automated suggestion creates a *pending approval request*. No action fires without an analyst signing off. This is the difference between a decision-support tool and an autonomous agent.
+- **Hash Chain Audit Log:** Think of it like Git commits — each one includes the hash of its parent. If you edit history, the chain breaks and git log detects it. Our audit log applies the same principle to SOC events.
+- **Hallucination Checker:** Structural validation is cheap and reliable. We don't need a second LLM to judge the first one — we can catch the most dangerous failure modes (fake MITRE IDs, out-of-range scores, empty guidance) with deterministic rules.
+
+### 5. Key Numbers
+| Metric | Value |
+|--------|-------|
+| New tests added | 27 |
+| Total tests (cumulative) | 58 |
+| Allowed actions in registry | 5 |
+| Hallucination check dimensions | 4 |
+| Eval test cases in fixture | 12 |
+| SHA-256 chain tamper detection latency | O(n) entries |
+
+### Surprises & Gotchas
+- **`model_construct` bypass:** To simulate a hallucinated report in tests (e.g. `suggested_action="delete_all_logs"`), Pydantic's `model_construct()` must be used instead of the normal constructor, which would correctly reject the invalid value. This is intentional — it simulates what an unconstrained LLM *could* produce.
+- **DuckDB `INSERT OR REPLACE`:** DuckDB supports upsert via `INSERT OR REPLACE INTO` with a `PRIMARY KEY`, which is cleaner than `ON CONFLICT DO UPDATE` for simple full-row replacement.
+- **Genesis hash is 64 zeros:** Standard convention borrowed from Bitcoin. The first block has no "real" parent, so we use a known sentinel value that cannot collide with any real SHA-256 output (the probability is astronomically small).

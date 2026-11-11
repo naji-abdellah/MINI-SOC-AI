@@ -1,0 +1,194 @@
+[
+  {
+    "id": "tc-001",
+    "description": "SQL injection alert - valid triage",
+    "alert": {
+      "alert_id": "alert-sqli-001",
+      "rule_id": "sqli_error_or_union",
+      "severity": "HIGH",
+      "description": "SQL injection pattern detected in URL"
+    },
+    "expected": {
+      "mitre_technique_id": "T1190",
+      "suggested_action": "block_ip",
+      "min_confidence": 0.5,
+      "min_investigation_steps": 2
+    }
+  },
+  {
+    "id": "tc-002",
+    "description": "SSH brute force - valid triage",
+    "alert": {
+      "alert_id": "alert-brute-002",
+      "rule_id": "ssh_brute_force",
+      "severity": "HIGH",
+      "description": "SSH brute force from 10.0.0.5"
+    },
+    "expected": {
+      "mitre_technique_id": "T1110",
+      "suggested_action": "block_ip",
+      "min_confidence": 0.5,
+      "min_investigation_steps": 2
+    }
+  },
+  {
+    "id": "tc-003",
+    "description": "Path traversal - valid triage",
+    "alert": {
+      "alert_id": "alert-lfi-003",
+      "rule_id": "path_traversal_lfi",
+      "severity": "HIGH",
+      "description": "Path traversal /etc/passwd probe"
+    },
+    "expected": {
+      "mitre_technique_id": "T1083",
+      "suggested_action": "block_ip",
+      "min_confidence": 0.5,
+      "min_investigation_steps": 2
+    }
+  },
+  {
+    "id": "tc-004",
+    "description": "XSS injection - valid triage",
+    "alert": {
+      "alert_id": "alert-xss-004",
+      "rule_id": "xss_script_injection",
+      "severity": "MEDIUM",
+      "description": "XSS script tag in request parameter"
+    },
+    "expected": {
+      "mitre_technique_id": "T1059",
+      "suggested_action": "notify_analyst",
+      "min_confidence": 0.4,
+      "min_investigation_steps": 1
+    }
+  },
+  {
+    "id": "tc-005",
+    "description": "Scanner UA - valid triage",
+    "alert": {
+      "alert_id": "alert-scan-005",
+      "rule_id": "scanner_user_agents",
+      "severity": "LOW",
+      "description": "Nmap scanner user-agent detected"
+    },
+    "expected": {
+      "mitre_technique_id": "T1046",
+      "suggested_action": "notify_analyst",
+      "min_confidence": 0.3,
+      "min_investigation_steps": 1
+    }
+  },
+  {
+    "id": "tc-006",
+    "description": "Command injection - valid triage",
+    "alert": {
+      "alert_id": "alert-cmdi-006",
+      "rule_id": "os_command_injection",
+      "severity": "CRITICAL",
+      "description": "OS command injection via semicolon"
+    },
+    "expected": {
+      "mitre_technique_id": "T1059",
+      "suggested_action": "isolate_host",
+      "min_confidence": 0.5,
+      "min_investigation_steps": 2
+    }
+  },
+  {
+    "id": "tc-007",
+    "description": "HALLUCINATION: fake MITRE ID should be caught",
+    "alert": {
+      "alert_id": "alert-fake-007",
+      "rule_id": "sqli_error_or_union",
+      "severity": "HIGH",
+      "description": "SQL injection"
+    },
+    "inject_hallucination": {
+      "mitre_technique_id": "T9999"
+    },
+    "expected": {
+      "hallucination_detected": true
+    }
+  },
+  {
+    "id": "tc-008",
+    "description": "HALLUCINATION: invalid action should be caught",
+    "alert": {
+      "alert_id": "alert-fake-008",
+      "rule_id": "ssh_brute_force",
+      "severity": "HIGH",
+      "description": "Brute force"
+    },
+    "inject_hallucination": {
+      "suggested_action": "delete_all_logs"
+    },
+    "expected": {
+      "hallucination_detected": true
+    }
+  },
+  {
+    "id": "tc-009",
+    "description": "HALLUCINATION: confidence out of range",
+    "alert": {
+      "alert_id": "alert-fake-009",
+      "rule_id": "scanner_user_agents",
+      "severity": "LOW",
+      "description": "Scanner"
+    },
+    "inject_hallucination": {
+      "confidence_score": 1.5
+    },
+    "expected": {
+      "hallucination_detected": true
+    }
+  },
+  {
+    "id": "tc-010",
+    "description": "HALLUCINATION: empty investigation steps",
+    "alert": {
+      "alert_id": "alert-fake-010",
+      "rule_id": "path_traversal_lfi",
+      "severity": "MEDIUM",
+      "description": "LFI"
+    },
+    "inject_hallucination": {
+      "investigation_steps": []
+    },
+    "expected": {
+      "hallucination_detected": true
+    }
+  },
+  {
+    "id": "tc-011",
+    "description": "Admin access after brute force - valid triage",
+    "alert": {
+      "alert_id": "alert-chain-011",
+      "rule_id": "admin_access_after_brute_force",
+      "severity": "CRITICAL",
+      "description": "Admin panel accessed after brute force"
+    },
+    "expected": {
+      "mitre_technique_id": "T1110",
+      "suggested_action": "isolate_host",
+      "min_confidence": 0.5,
+      "min_investigation_steps": 2
+    }
+  },
+  {
+    "id": "tc-012",
+    "description": "Sensitive file probe - valid triage",
+    "alert": {
+      "alert_id": "alert-sens-012",
+      "rule_id": "sensitive_file_probing",
+      "severity": "MEDIUM",
+      "description": ".env file accessed"
+    },
+    "expected": {
+      "mitre_technique_id": "T1083",
+      "suggested_action": "notify_analyst",
+      "min_confidence": 0.3,
+      "min_investigation_steps": 1
+    }
+  }
+]

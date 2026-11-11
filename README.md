@@ -107,7 +107,7 @@ minisoc-ai/
   - Feature engineering pipeline (entropy, lexical, rolling IP rates); Isolation Forest vs. XGBoost comparative evaluation on time-series splits; comprehensive evaluation report; break-it test demonstrating metrics collapse under attack distribution shift.
 - [x] **Milestone 4: LLM Triage with RAG**
   - Local Ollama 3B triage pipeline with MITRE technique & SOC runbook RAG; strict JSON schema output; prompt quarantine defense; break-it test demonstrating indirect prompt injection attack and mitigation.
-- [ ] **Milestone 5: Guardrails, Evaluation & Auditability**
+- [x] **Milestone 5: Guardrails, Evaluation & Auditability**
   - Pydantic schema validation, action allow-lists, Promptfoo hallucination benchmarks, SHA-256 hash chain audit log.
 - [ ] **Milestone 6: Dashboard, Feedback Loop & CI**
   - Streamlit analyst interface, analyst feedback loop, GitHub Actions automated CI.
