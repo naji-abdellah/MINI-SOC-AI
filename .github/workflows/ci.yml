@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    name: Test, Validate Rules & Run Evals
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -24,6 +25,22 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Validate Detection Rules
+        run: |
+          python -c "
+          from detections.engine import DetectionEngine
+          import duckdb
+          conn = duckdb.connect(':memory:')
+          engine = DetectionEngine(db_conn=conn)
+          count = engine.load_rules_from_dir('detections/rules')
+          print(f'Successfully loaded and validated {count} detection rules.')
+          assert count >= 8, f'Expected at least 8 rules, found {count}'
+          "
+
       - name: Run Pytest Test Suite
         run: |
           pytest -v
+
+      - name: Run Evaluation Suite & Hallucination Check
+        run: |
+          python evals/run_evals.py

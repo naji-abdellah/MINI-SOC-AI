@@ -298,3 +298,60 @@ Four interacting components built:
 - **`model_construct` bypass:** To simulate a hallucinated report in tests (e.g. `suggested_action="delete_all_logs"`), Pydantic's `model_construct()` must be used instead of the normal constructor, which would correctly reject the invalid value. This is intentional — it simulates what an unconstrained LLM *could* produce.
 - **DuckDB `INSERT OR REPLACE`:** DuckDB supports upsert via `INSERT OR REPLACE INTO` with a `PRIMARY KEY`, which is cleaner than `ON CONFLICT DO UPDATE` for simple full-row replacement.
 - **Genesis hash is 64 zeros:** Standard convention borrowed from Bitcoin. The first block has no "real" parent, so we use a known sentinel value that cannot collide with any real SHA-256 output (the probability is astronomically small).
+
+
+---
+
+## Milestone 6: Dashboard, Feedback Loop & CI
+
+### 1. Predict
+- **Question:** What happens if the SOC dashboard queries DuckDB while background batch ingestion or live rule evaluation is writing to the database?
+- **Hypothesis:** DuckDB locks file writes or throws concurrency errors unless read queries use dedicated read-only connections, and missing tables will crash a naive dashboard if schema tables haven't been populated yet.
+
+### 2. Build
+Three core capabilities implemented:
+
+**A. Decoupled Dashboard Data Layer (`dashboard/data.py`)**
+- Dedicated read-only connections (`read_only=True`) to prevent lock contention with background ingestion/detection processes.
+- Graceful exception handling and fallback empty DataFrames so dashboard views never crash even against an empty or freshly initialized database.
+- Queries for:
+  - Hourly alert volume trends
+  - Severity distribution metrics (CRITICAL, HIGH, MEDIUM, LOW)
+  - Recent alert queue with evidence details
+  - MITRE ATT&CK coverage mapping matrix
+  - Human-in-the-loop pending approval queue and historical decision records
+  - Real-time cryptographic audit log chain verification
+
+**B. Interactive Streamlit Interface (`dashboard/app.py`)**
+- Modular multi-page navigation:
+  1. *Overview:* Executive KPI cards (Total Alerts, Criticals, Pending approvals, Tamper status) and interactive trend charts.
+  2. *Alerts:* Searchable incident triage table with colour-coded severity badges.
+  3. *MITRE Coverage:* Visual attack technique heatmap showing coverage distribution across rules.
+  4. *Approvals:* Interactive queue allowing human analysts to inspect LLM triage reasoning and suggested containment actions before execution.
+  5. *Audit Chain:* Live cryptographic verification status displaying chain integrity and inspection of the latest SHA-256 blocks.
+  6. *Analyst Feedback:* Interactive submission interface to label true/false positives, recording analyst feedback directly to DuckDB to drive active learning.
+
+**C. Automated Continuous Integration (`.github/workflows/ci.yml`)**
+- Multi-stage GitHub Actions workflow:
+  1. Automated detection rule syntax & MITRE mapping validation (`assert count >= 8`).
+  2. Full Pytest regression suite across all 6 modules (67 unit and break-it tests).
+  3. Evaluation suite running 12-case hallucination and prompt safety verification (`evals/run_evals.py`).
+
+### 3. Break it on Purpose
+**Exercise: Empty / Missing Database & Graceful Degradation (`test_empty_or_missing_db`)**
+- *Experiment:* Tested all dashboard query functions against a non-existent database file path (`missing.duckdb`) and empty audit log.
+- *Result:* Rather than raising unhandled SQL or IO exceptions, all query functions caught exceptions and returned structured empty DataFrames, allowing the Streamlit UI to render helpful placeholder messages ("No alert data yet") rather than crashing.
+
+### 4. Explain it Back
+- **Decoupled Read-Only Data Layer:** A SOC dashboard must be non-intrusive. If analysts viewing alerts blocks SIEM ingestion, the SOC creates latency in attack detection. Read-only connection decoupling prevents lock interference.
+- **Analyst Feedback Loop:** AI models in security deteriorate over time due to environment drift and adversarial evolution. A dedicated feedback loop enables analysts to mark false positives, creating the ground truth dataset required for model retraining and rule tuning.
+- **CI as Gatekeeper:** In detection engineering, a broken rule or a model hallucination can blind an entire security team. Enforcing rule validation and hallucination checks in CI ensures faulty detections never make it to production.
+
+### 5. Key Numbers
+| Metric | Value |
+|--------|-------|
+| New tests added | 9 |
+| Total test suite (cumulative) | 67 tests (100% passing) |
+| Dashboard pages | 6 |
+| MITRE techniques covered | 7+ core techniques |
+| CI validation stages | 3 (Rules, Pytest, Evals) |

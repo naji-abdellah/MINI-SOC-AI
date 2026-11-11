@@ -109,12 +109,53 @@ minisoc-ai/
   - Local Ollama 3B triage pipeline with MITRE technique & SOC runbook RAG; strict JSON schema output; prompt quarantine defense; break-it test demonstrating indirect prompt injection attack and mitigation.
 - [x] **Milestone 5: Guardrails, Evaluation & Auditability**
   - Pydantic schema validation, action allow-lists, Promptfoo hallucination benchmarks, SHA-256 hash chain audit log.
-- [ ] **Milestone 6: Dashboard, Feedback Loop & CI**
-  - Streamlit analyst interface, analyst feedback loop, GitHub Actions automated CI.
+- [x] **Milestone 6: Dashboard, Feedback Loop & CI**
+  - Streamlit analyst interface, analyst feedback loop, GitHub Actions automated CI with rule validation and hallucination checks.
 
 ---
 
-## 🚀 Getting Started (Milestone 0)
+## 🚀 Running the End-to-End Pipeline
+
+MiniSOC-AI is designed to run seamlessly on modest hardware. You can run individual stages or launch the interactive UI:
+
+### 1. Ingestion (Normalize Logs to DuckDB)
+```powershell
+python -m ingestion.cli --input data/samples/ --db data/minisoc.duckdb
+```
+
+### 2. Detection Engine (Rule Evaluation & MITRE Mapping)
+```powershell
+python -m detections.cli --rules detections/rules/ --db data/minisoc.duckdb --coverage
+```
+
+### 3. ML Anomaly Detection & Distribution Shift Evaluation
+```powershell
+python -m ml.evaluate
+```
+
+### 4. LLM Triage with Grounded RAG & Cryptographic Audit
+```powershell
+python -m llm.cli --db data/minisoc.duckdb
+```
+
+### 5. Automated Evaluation & Hallucination Benchmark
+```powershell
+python evals/run_evals.py
+```
+
+### 6. Launch the Interactive SOC Dashboard
+```powershell
+streamlit run dashboard/app.py
+```
+
+### 7. Run Full Test Suite (67 Passing Tests)
+```powershell
+pytest -v
+```
+
+---
+
+## 🛠️ Environment Setup & Hardware Discipline
 
 ### 1. Windows / WSL2 Memory Setup (Crucial for 8 GB RAM machines)
 To prevent WSL2 and Docker from starving your Windows operating system:
