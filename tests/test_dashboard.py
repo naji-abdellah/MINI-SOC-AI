@@ -189,3 +189,19 @@ def test_execute_approval(test_db, tmp_path):
     hist = approval_history(test_db)
     req_ids = [h for h in hist["request_id"]]
     assert "r1" in req_ids
+
+
+def test_audit_log_table(tmp_path):
+    from dashboard.data import audit_log_table
+    log_file = str(tmp_path / "test_table_audit.jsonl")
+    log = AuditLog(log_path=log_file)
+    log.append("triage", {"alert_id": "alert-1234", "report": {"mitre_technique_id": "T1190", "suggested_action": "block_ip", "assessed_severity": "HIGH"}})
+    log.append("approval_decision", {"request_id": "req-1", "status": "approved", "suggested_action": "block_ip", "analyst": "analyst_bob"})
+
+    df = audit_log_table(log_path=log_file)
+    assert len(df) == 2
+    assert "Block" in df.columns
+    assert "Timestamp" in df.columns
+    assert "Event Summary" in df.columns
+    assert "Parent Hash" in df.columns
+    assert "Entry Hash" in df.columns

@@ -337,6 +337,55 @@ def audit_chain_status(
     }
 
 
+def audit_log_table(
+    log_path: str = os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl"),
+    limit: int = 25,
+) -> pd.DataFrame:
+    """Return recent audit log entries formatted as a clean, structured DataFrame for analysts.
+
+    Replaces raw JSON text dumps with a readable forensic timeline.
+    """
+    from guardrails.audit_log import AuditLog
+
+    log = AuditLog(log_path=log_path)
+    entries = log.load_all()
+    if not entries:
+        return pd.DataFrame(
+            columns=["Block", "Timestamp", "Type", "Event Summary", "Parent Hash", "Entry Hash"]
+        )
+
+    recent = entries[-limit:][::-1]
+    rows = []
+    total = len(entries)
+    for idx, e in enumerate(recent):
+        block_num = total - idx - 1
+        p = e.payload
+        summary = ""
+        if e.entry_type == "approval_decision":
+            summary = f"Action {p.get('status', '').upper()}: {p.get('suggested_action', '')} by {p.get('analyst', 'analyst')}"
+        elif e.entry_type == "approval":
+            summary = f"Queued {p.get('suggested_action', '')} for alert {p.get('alert_id', '')[:8]}"
+        elif e.entry_type == "triage":
+            rep = p.get("report", {})
+            summary = f"AI Triage: {rep.get('mitre_technique_id', '')} - {rep.get('suggested_action', '')} ({rep.get('assessed_severity', '')})"
+        elif e.entry_type == "alert":
+            summary = f"Rule match: {p.get('rule_id', p.get('alert_id', ''))}"
+        else:
+            summary = str(p)[:60]
+
+        rows.append(
+            {
+                "Block": f"#{block_num}",
+                "Timestamp": str(e.timestamp)[:19],
+                "Type": e.entry_type.upper(),
+                "Event Summary": summary,
+                "Parent Hash": e.prev_hash[:12] + "...",
+                "Entry Hash": e.entry_hash[:12] + "...",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 # ---------------------------------------------------------------------------
 # Analyst feedback
 # ---------------------------------------------------------------------------

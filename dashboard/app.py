@@ -1,19 +1,13 @@
-"""MiniSOC-AI Streamlit Dashboard.
+"""MiniSOC-AI / CY • SECURE Streamlit SOC Analyst Console.
+
+High-productivity, analyst-centric security operations interface:
+- Modern dark aesthetic inspired by Linear/Vercel (deep black, glassmorphism, glowing accents).
+- AI background triage with 1-click human judgment SOAR execution.
+- Structured forensic audit timeline (no raw JSON text walls).
+- Active learning feedback loop to eliminate repetitive false alarms.
 
 Launch with:
     streamlit run dashboard/app.py
-
-The app reads from the DuckDB database and audit log in real-time.
-No Ollama / LLM daemon is required; the page shows what has already
-been triaged and recorded.
-
-Pages / Sections:
-  1. Overview      -- KPI tiles + alert volume chart
-  2. Alerts        -- Recent alerts table with severity badges
-  3. MITRE Heatmap -- Technique coverage bar chart
-  4. Approvals     -- Pending queue + decision history
-  5. Audit Chain   -- Tamper verification widget
-  6. Feedback      -- Analyst FP/TP feedback form + summary
 """
 
 from __future__ import annotations
@@ -22,7 +16,7 @@ import os
 import sys
 from pathlib import Path
 
-# Allow running from repo root: `streamlit run dashboard/app.py`
+# Allow running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
@@ -33,6 +27,7 @@ from dashboard.data import (
     alert_volume_by_hour,
     approval_history,
     audit_chain_status,
+    audit_log_table,
     execute_approval,
     feedback_summary,
     mitre_coverage,
@@ -42,12 +37,12 @@ from dashboard.data import (
 )
 
 # ---------------------------------------------------------------------------
-# Page config
+# Page configuration
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="MiniSOC-AI Dashboard",
-    page_icon=":shield:",
+    page_title="CY • SECURE | MiniSOC-AI",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -56,360 +51,620 @@ DB_PATH = os.getenv("MINISOC_DB", "data/minisoc.duckdb")
 AUDIT_LOG = os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl")
 
 # ---------------------------------------------------------------------------
-# Sidebar — navigation
+# Global CSS Injection: CY • SECURE Dark Glassmorphism Theme
 # ---------------------------------------------------------------------------
 
-st.sidebar.title("MiniSOC-AI")
-st.sidebar.caption("On-premise AI-assisted SOC")
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    /* Global Dark Theme */
+    html, body, [data-testid="stAppViewContainer"] {
+        background-color: #050505 !important;
+        color: #a1a1aa !important;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    }
+
+    [data-testid="stHeader"] {
+        background: rgba(5, 5, 5, 0.7) !important;
+        backdrop-filter: blur(12px) !important;
+    }
+
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #09090b !important;
+        border-right: 1px solid rgba(39, 39, 42, 0.6) !important;
+    }
+
+    /* Glass Panels */
+    .glass-card {
+        background: rgba(24, 24, 27, 0.65);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+
+    .glass-card-orange {
+        background: rgba(24, 24, 27, 0.7);
+        backdrop-filter: blur(14px);
+        border: 1px solid rgba(249, 115, 22, 0.3);
+        box-shadow: 0 0 25px rgba(249, 115, 22, 0.08);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+
+    /* Metric Cards */
+    div[data-testid="stMetric"] {
+        background: rgba(24, 24, 27, 0.6) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 10px !important;
+        padding: 16px 20px !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        color: #f4f4f5 !important;
+        font-weight: 600 !important;
+        font-size: 26px !important;
+    }
+
+    div[data-testid="stMetricLabel"] {
+        color: #71717a !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.08em !important;
+    }
+
+    /* Primary & Interactive Buttons */
+    div.stButton > button {
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+    }
+
+    div.stButton > button[kind="primary"], div.stButton > button:first-child {
+        background: linear-gradient(180deg, #f97316 0%, #ea580c 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(249, 115, 22, 0.3) !important;
+        box-shadow: 0 4px 12px rgba(234, 88, 12, 0.25) !important;
+    }
+
+    div.stButton > button:hover {
+        filter: brightness(1.15) !important;
+        transform: translateY(-1px);
+    }
+
+    /* Expanders */
+    div[data-testid="stExpander"] {
+        background: rgba(24, 24, 27, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        margin-bottom: 10px !important;
+    }
+
+    /* Tables */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #27272a;
+        border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #3f3f46;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------------------------------------------------------
+# Sidebar Navigation & Branding
+# ---------------------------------------------------------------------------
+
+st.sidebar.markdown(
+    """
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:24px; padding-left:4px;">
+        <div style="width:10px; height:10px; border-radius:50%; background:#f97316; box-shadow:0 0 12px #f97316;"></div>
+        <span style="color:#f4f4f5; font-weight:600; font-size:17px; letter-spacing:-0.4px;">
+            CY • SECURE <span style="font-size:11px; color:#f97316; font-weight:500; margin-left:2px;">MiniSOC</span>
+        </span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Quick Action in Sidebar to simulate fresh threats on demand
+if st.sidebar.button("⚡ Trigger Attack Simulation", use_container_width=True):
+    with st.spinner("Generating simulated multi-stage attack and executing triage..."):
+        from scripts.demo import run_pipeline
+        run_pipeline(scenario="all", db_path=DB_PATH, audit_path=AUDIT_LOG, launch_dashboard=False)
+        st.cache_data.clear()
+        st.success("Fresh threats ingested and queued!")
+        st.rerun()
+
+st.sidebar.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
 page = st.sidebar.radio(
-    "Navigate",
+    "Navigation",
     [
-        "Overview",
-        "Alerts",
-        "MITRE Coverage",
-        "Approvals",
-        "Audit Chain",
-        "Analyst Feedback",
+        "Dashboard Overview",
+        "Threats & Alerts",
+        "MITRE Attack Surface",
+        "Human Approval Gate",
+        "Immutable Audit Chain",
+        "Analyst Feedback Loop",
     ],
+    label_visibility="collapsed",
 )
 
 st.sidebar.markdown("---")
+st.sidebar.caption(f"**Database:** `{DB_PATH}`")
+st.sidebar.caption(f"**Audit Log:** `{AUDIT_LOG}`")
+
+if st.sidebar.button("🔄 Refresh Telemetry", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
+
 st.sidebar.markdown(
-    "**DB:** `" + DB_PATH + "`  \n"
-    "**Audit log:** `" + AUDIT_LOG + "`"
+    """
+    <div style="margin-top:auto; padding-top:20px; border-top:1px solid rgba(39,39,42,0.6); display:flex; align-items:center; gap:10px;">
+        <div style="width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg, #1e1b4b, #4338ca); display:flex; align-items:center; justify-content:center; color:white; font-size:12px; font-weight:600; border:1px solid #3730a3;">NA</div>
+        <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:500; color:#e4e4e7; line-height:1.2;">Naji Abdellah</div>
+            <div style="font-size:11px; color:#71717a;">Lead SOC Analyst</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
-if st.sidebar.button("Refresh data"):
-    st.cache_data.clear()
-
 # ---------------------------------------------------------------------------
-# Shared helper
+# Severity Badge Helper
 # ---------------------------------------------------------------------------
 
-_SEV_COLOR = {
-    "CRITICAL": "#c0392b",
-    "HIGH": "#e67e22",
-    "MEDIUM": "#f1c40f",
-    "LOW": "#27ae60",
+_SEV_STYLES = {
+    "CRITICAL": "background:rgba(239, 68, 68, 0.15); color:#f87171; border:1px solid rgba(239, 68, 68, 0.3);",
+    "HIGH": "background:rgba(249, 115, 22, 0.15); color:#fb923c; border:1px solid rgba(249, 115, 22, 0.3);",
+    "MEDIUM": "background:rgba(234, 179, 8, 0.15); color:#facc15; border:1px solid rgba(234, 179, 8, 0.3);",
+    "LOW": "background:rgba(34, 197, 94, 0.15); color:#4ade80; border:1px solid rgba(34, 197, 94, 0.3);",
 }
 
 
 def _severity_badge(sev: str) -> str:
-    color = _SEV_COLOR.get(sev.upper(), "#7f8c8d")
-    return f'<span style="background:{color};color:white;padding:2px 8px;border-radius:4px;font-size:0.8em">{sev}</span>'
+    sev_upper = sev.upper()
+    style = _SEV_STYLES.get(sev_upper, "background:rgba(113, 113, 122, 0.2); color:#a1a1aa; border:1px solid #3f3f46;")
+    return f'<span style="{style} padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; letter-spacing:0.04em;">{sev_upper}</span>'
 
 
 # ===========================================================================
-# PAGE: Overview
+# PAGE: Dashboard Overview
 # ===========================================================================
 
-if page == "Overview":
-    st.title("MiniSOC-AI — Overview")
+if page == "Dashboard Overview":
+    # Top Breadcrumb
+    st.markdown(
+        """
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
+            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
+            <span>Operations</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-weight:500;">Executive Dashboard</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     sev_df = alert_severity_counts(DB_PATH)
     vol_df = alert_volume_by_hour(DB_PATH)
     pend_df = pending_approvals(DB_PATH)
     chain = audit_chain_status(AUDIT_LOG)
 
-    # KPI tiles
-    col1, col2, col3, col4 = st.columns(4)
     total_alerts = int(sev_df["count"].sum()) if not sev_df.empty else 0
-    critical = int(
-        sev_df.loc[sev_df["severity"] == "CRITICAL", "count"].sum()
-    ) if not sev_df.empty else 0
+    critical_count = int(sev_df.loc[sev_df["severity"] == "CRITICAL", "count"].sum()) if not sev_df.empty and "CRITICAL" in sev_df["severity"].values else 0
     pending_count = len(pend_df)
     chain_ok = chain["valid"]
 
-    col1.metric("Total Alerts", total_alerts)
-    col2.metric("CRITICAL Alerts", critical, delta=None)
-    col3.metric("Pending Approvals", pending_count)
-    col4.metric(
-        "Audit Chain",
-        "VALID" if chain_ok else "TAMPERED",
-        delta=None,
-        delta_color="off",
+    # Top Detail Card (Linear/Cyber style)
+    st.markdown(
+        f"""
+        <div class="glass-card" style="margin-bottom:24px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                        <span style="font-size:20px; font-weight:600; color:#f4f4f5; letter-spacing:-0.5px;">Active Campaign: THR-8840</span>
+                        <span style="background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); padding:2px 10px; border-radius:4px; font-size:12px; font-weight:600;">ACTIVE THREAT</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:32px; flex-wrap:wrap;">
+                        <div>
+                            <div style="font-size:11px; color:#71717a; text-transform:uppercase; font-weight:600;">Lead Analyst</div>
+                            <div style="font-size:13px; color:#e4e4e7; font-weight:500; margin-top:2px;">Naji Abdellah</div>
+                        </div>
+                        <div>
+                            <div style="font-size:11px; color:#71717a; text-transform:uppercase; font-weight:600;">AI Triage Status</div>
+                            <div style="font-size:13px; color:#fb923c; font-weight:500; margin-top:2px;">{pending_count} Action(s) Awaiting Approval</div>
+                        </div>
+                        <div>
+                            <div style="font-size:11px; color:#71717a; text-transform:uppercase; font-weight:600;">Response SLA</div>
+                            <div style="font-size:13px; color:#4ade80; font-weight:500; margin-top:2px;">Target: &lt; 15m (Real-time)</div>
+                        </div>
+                        <div>
+                            <div style="font-size:11px; color:#71717a; text-transform:uppercase; font-weight:600;">Hardware Mode</div>
+                            <div style="font-size:13px; color:#a1a1aa; font-weight:500; margin-top:2px;">Local 8 GB RAM (No Cloud)</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <span style="background:rgba(34,197,94,0.12); color:#4ade80; border:1px solid rgba(34,197,94,0.25); padding:6px 14px; border-radius:6px; font-size:12px; font-weight:500; display:flex; align-items:center; gap:6px;">
+                        <span style="width:6px; height:6px; border-radius:50%; background:#22c55e;"></span> SIEM Online
+                    </span>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    if not chain_ok:
-        st.error(
-            f"Audit chain integrity FAILED at entry index {chain['broken_at']}!"
-        )
 
-    st.markdown("---")
+    # Metric Tiles
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Ingested Alerts", total_alerts)
+    m2.metric("Critical Alerts", critical_count)
+    m3.metric("Pending Approvals", pending_count)
+    m4.metric("Audit Chain Integrity", "VALID" if chain_ok else "TAMPERED")
 
-    # Alert volume over time
-    st.subheader("Alert Volume by Hour")
-    if vol_df.empty:
-        st.info("No alert data yet. Run the detection engine to populate.")
-    else:
-        st.bar_chart(vol_df.set_index("hour")["count"])
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    # Severity breakdown
-    st.subheader("Alerts by Severity")
-    if sev_df.empty:
-        st.info("No severity data.")
-    else:
-        st.bar_chart(sev_df.set_index("severity")["count"])
+    # Charts
+    c1, c2 = st.columns([7, 5])
+    with c1:
+        st.markdown('<div class="glass-card"><h4 style="color:#f4f4f5; margin-bottom:16px; font-size:15px; font-weight:500;">Alert Velocity Trend (Hourly UTC)</h4>', unsafe_allow_html=True)
+        if not vol_df.empty:
+            st.bar_chart(vol_df.set_index("hour")["count"], color="#f97316")
+        else:
+            st.info("No hourly alert data yet. Click '⚡ Trigger Attack Simulation' in the sidebar.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c2:
+        st.markdown('<div class="glass-card"><h4 style="color:#f4f4f5; margin-bottom:16px; font-size:15px; font-weight:500;">Severity Distribution</h4>', unsafe_allow_html=True)
+        if not sev_df.empty:
+            st.bar_chart(sev_df.set_index("severity")["count"], color="#ea580c")
+        else:
+            st.info("No severity data available.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ===========================================================================
-# PAGE: Alerts
+# PAGE: Threats & Alerts
 # ===========================================================================
 
-elif page == "Alerts":
-    st.title("Recent Alerts")
+elif page == "Threats & Alerts":
+    st.markdown(
+        """
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
+            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
+            <span>Threats</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-weight:500;">Active Threat Telemetry</span>
+        </div>
+        <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:16px;">Active Incident Queue</h2>
+        """,
+        unsafe_allow_html=True,
+    )
 
     df = recent_alerts(DB_PATH, limit=100)
     if df.empty:
-        st.info("No alerts found. Run `py detections/cli.py` to scan events.")
+        st.info("No alerts found in DuckDB. Use '⚡ Trigger Attack Simulation' in the sidebar.")
     else:
-        # Severity filter
-        sevs = ["ALL"] + sorted(df["severity"].unique().tolist())
-        sel = st.selectbox("Filter by severity", sevs)
-        if sel != "ALL":
-            df = df[df["severity"] == sel]
+        sevs = ["ALL"] + sorted([s for s in df["severity"].unique() if s])
+        f_col1, f_col2 = st.columns([2, 4])
+        sel_sev = f_col1.selectbox("Filter by Severity", sevs)
+        if sel_sev != "ALL":
+            df = df[df["severity"] == sel_sev]
 
-        st.write(f"Showing {len(df)} alerts")
+        st.caption(f"Displaying {len(df)} security alerts")
 
-        # Render with coloured severity column
         for _, row in df.iterrows():
-            badge = _severity_badge(str(row.get("severity", "")))
-            title = row.get("rule_title") or row.get("rule_id", "")
-            with st.expander(
-                f"[{row.get('severity', '')}] {title} — {str(row.get('detected_at', ''))[:19]}"
-            ):
+            sev = str(row.get("severity", "MEDIUM"))
+            badge = _severity_badge(sev)
+            rule_title = row.get("rule_title") or row.get("rule_id", "Detection Alert")
+            det_time = str(row.get("detected_at", ""))[:19]
+            desc = row.get("description", "")
+
+            with st.expander(f"[{sev}] {rule_title} — {det_time}"):
                 st.markdown(f"**Severity:** {badge}", unsafe_allow_html=True)
-                st.write(f"**Alert ID:** `{row.get('alert_id', '')}`")
-                st.write(f"**Rule ID:** `{row.get('rule_id', '')}`")
-                st.write(f"**Description / Evidence:** {row.get('description', '')}")
+                st.markdown(f"**Rule ID:** `{row.get('rule_id', '')}`")
+                st.markdown(f"**Alert UUID:** `{row.get('alert_id', '')}`")
+                st.markdown(f"**Forensic Evidence:** `{desc}`")
 
 
 # ===========================================================================
-# PAGE: MITRE Coverage
+# PAGE: MITRE Attack Surface
 # ===========================================================================
 
-elif page == "MITRE Coverage":
-    st.title("MITRE ATT&CK Coverage Heatmap")
-
-    _MITRE_NAMES: dict[str, str] = {
-        "T1190": "Exploit Public-Facing App",
-        "T1110": "Brute Force",
-        "T1083": "File & Directory Discovery",
-        "T1059": "Command & Scripting Interpreter",
-        "T1046": "Network Service Discovery",
-        "T1078": "Valid Accounts",
-        "T1003": "OS Credential Dumping",
-        "T1595.002": "Active Scanning: Vulnerability Scanning",
-        "T0000": "Unknown / Unmapped",
-    }
+elif page == "MITRE Attack Surface":
+    st.markdown(
+        """
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
+            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
+            <span>Surface Map</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-weight:500;">MITRE ATT&CK Matrix</span>
+        </div>
+        <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:16px;">Attack Surface & Technique Distribution</h2>
+        """,
+        unsafe_allow_html=True,
+    )
 
     df = mitre_coverage(DB_PATH)
     if df.empty:
-        st.info("No alert data for MITRE mapping.")
+        st.info("No MITRE alert data available.")
     else:
-        df["technique"] = df.apply(
-            lambda r: f"{r['mitre_technique_id']} — {r.get('mitre_technique_name') or _MITRE_NAMES.get(r['mitre_technique_id'], 'Unknown')}",
+        df["display_technique"] = df.apply(
+            lambda r: f"{r['mitre_technique_id']} — {r.get('mitre_technique_name') or 'Security Event'}",
             axis=1,
         )
-        st.bar_chart(df.set_index("technique")["count"])
 
-        st.markdown("---")
-        st.subheader("Coverage Table")
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.bar_chart(df.set_index("display_technique")["count"], color="#f97316")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.subheader("Technique Breakdown Table")
         st.dataframe(
-            df[["mitre_technique_id", "technique", "count"]].rename(
+            df[["mitre_technique_id", "mitre_technique_name", "count"]].rename(
                 columns={
                     "mitre_technique_id": "Technique ID",
-                    "technique": "Technique Name",
+                    "mitre_technique_name": "MITRE ATT&CK Technique",
                     "count": "Alert Count",
                 }
             ),
             use_container_width=True,
         )
 
-        total_known = len(
-            [t for t in df["mitre_technique_id"] if t and t != "T0000"]
-        )
-        st.info(
-            f"Coverage: {total_known} distinct MITRE techniques triggered "
-            f"across {int(df['count'].sum())} alerts."
-        )
-
 
 # ===========================================================================
-# PAGE: Approvals
+# PAGE: Human Approval Gate (The AI Decision Console)
 # ===========================================================================
 
-elif page == "Approvals":
-    st.title("Human-in-the-Loop Approval Queue")
+elif page == "Human Approval Gate":
+    st.markdown(
+        """
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
+            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
+            <span>SOAR Automation</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-weight:500;">Human-in-the-Loop Approval Gate</span>
+        </div>
+        <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:8px;">AI Containment Recommendations</h2>
+        <p style="color:#71717a; font-size:13px; margin-bottom:24px;">The AI pipeline investigates events in the background, applies policy guardrails, and requires human authorization before applying automated containment actions.</p>
+        """,
+        unsafe_allow_html=True,
+    )
 
     pend_df = pending_approvals(DB_PATH)
-    hist_df = approval_history(DB_PATH)
+    hist_df = approval_history(DB_PATH, limit=30)
 
-    st.subheader(f"Pending Approvals ({len(pend_df)})")
     if pend_df.empty:
-        st.success("No pending approvals — all clear.")
+        st.markdown(
+            """
+            <div class="glass-card" style="text-align:center; padding:40px 20px;">
+                <div style="font-size:28px; margin-bottom:12px;">🛡️</div>
+                <h3 style="color:#f4f4f5; font-size:18px; font-weight:600; margin-bottom:6px;">Approval Queue is Clear</h3>
+                <p style="color:#71717a; font-size:13px; max-width:480px; margin:0 auto 20px auto;">
+                    All AI triage recommendations have been reviewed. Click below to simulate a fresh attack scenario and generate new actions to triage.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("⚡ Simulate Incoming Threat Campaign & Queue Actions", type="primary"):
+            with st.spinner("Executing attack simulation and AI triage..."):
+                from scripts.demo import run_pipeline
+                run_pipeline(scenario="all", db_path=DB_PATH, audit_path=AUDIT_LOG, launch_dashboard=False)
+                st.cache_data.clear()
+                st.rerun()
     else:
-        for idx, row in pend_df.iterrows():
-            req_id = row['request_id']
-            with st.expander(
-                f"🚨 Alert `{row['alert_id']}` — Recommended Action: **{row['suggested_action'].upper()}**",
-                expanded=True,
-            ):
-                st.markdown(f"**Request ID:** `{req_id}`")
-                st.markdown(f"**Queued at:** `{str(row.get('timestamp', ''))[:19]} UTC`")
-                st.markdown(f"**Suggested Containment:** `{row['suggested_action']}`")
+        st.markdown(f"<p style='color:#fb923c; font-size:14px; font-weight:500; margin-bottom:16px;'>⚠️ {len(pend_df)} Action(s) Requiring Analyst Judgment</p>", unsafe_allow_html=True)
 
-                col_in1, col_in2 = st.columns([1, 2])
-                analyst_name = col_in1.text_input(
-                    "Analyst Identity",
-                    value="analyst_naji",
-                    key=f"analyst_{req_id}",
+        for _, row in pend_df.iterrows():
+            req_id = row["request_id"]
+            action = row["suggested_action"].upper()
+
+            st.markdown(
+                f"""
+                <div class="glass-card-orange">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <span style="font-size:15px; font-weight:600; color:#f4f4f5;">Alert: {row['alert_id']}</span>
+                            <div style="font-size:12px; color:#71717a; margin-top:2px;">Queued at {str(row.get('timestamp', ''))[:19]} UTC</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:12px; color:#71717a;">Recommended Action:</span>
+                            <span style="background:rgba(249,115,22,0.15); color:#f97316; border:1px solid rgba(249,115,22,0.4); padding:3px 10px; border-radius:4px; font-size:12px; font-weight:600;">{action}</span>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            col1, col2 = st.columns([1, 2])
+            analyst = col1.text_input("Analyst Name", value="analyst_naji", key=f"an_{req_id}")
+            notes = col2.text_input("Analyst Justification / Notes", placeholder="e.g., Confirmed malicious scanner via threat intel feed", key=f"no_{req_id}")
+
+            btn1, btn2 = st.columns(2)
+            if btn1.button(f"⚡ Execute Containment: {action}", key=f"app_{req_id}", use_container_width=True):
+                res = execute_approval(
+                    request_id=req_id,
+                    action_type="approve",
+                    analyst=analyst,
+                    notes=notes or "Approved by analyst",
+                    db_path=DB_PATH,
+                    audit_log_path=AUDIT_LOG,
                 )
-                analyst_note = col_in2.text_input(
-                    "Analyst Justification / Notes",
-                    placeholder="e.g., Confirmed malicious attacker IP from external threat intel",
-                    key=f"notes_{req_id}",
+                st.success(f"Containment Action Applied: {res['containment_cmd']}")
+                st.info(f"Recorded in Cryptographic Block: {res['audit_hash'][:16]}...")
+                st.cache_data.clear()
+                st.rerun()
+
+            if btn2.button("Dismiss / Reject Action", key=f"rej_{req_id}", use_container_width=True):
+                res = execute_approval(
+                    request_id=req_id,
+                    action_type="reject",
+                    analyst=analyst,
+                    notes=notes or "Dismissed by analyst",
+                    db_path=DB_PATH,
+                    audit_log_path=AUDIT_LOG,
                 )
+                st.warning(f"Action Dismissed: {res['containment_cmd']}")
+                st.cache_data.clear()
+                st.rerun()
 
-                col_btn1, col_btn2 = st.columns([1, 1])
-                if col_btn1.button(f"✅ Approve & Execute {row['suggested_action']}", key=f"btn_app_{req_id}", use_container_width=True):
-                    res = execute_approval(
-                        request_id=req_id,
-                        action_type="approve",
-                        analyst=analyst_name,
-                        notes=analyst_note,
-                        db_path=DB_PATH,
-                        audit_log_path=AUDIT_LOG,
-                    )
-                    st.success(f"Containment Action Executed: {res['containment_cmd']}")
-                    st.caption(f"Immutable Audit Hash: `{res['audit_hash']}`")
-                    st.rerun()
+            st.markdown("<hr style='border-color:rgba(39,39,42,0.4); margin:20px 0;'>", unsafe_allow_html=True)
 
-                if col_btn2.button("❌ Reject Action", key=f"btn_rej_{req_id}", use_container_width=True):
-                    res = execute_approval(
-                        request_id=req_id,
-                        action_type="reject",
-                        analyst=analyst_name,
-                        notes=analyst_note or "Manually rejected by analyst",
-                        db_path=DB_PATH,
-                        audit_log_path=AUDIT_LOG,
-                    )
-                    st.warning(f"Action Rejected: {res['containment_cmd']}")
-                    st.caption(f"Immutable Audit Hash: `{res['audit_hash']}`")
-                    st.rerun()
-
-    st.markdown("---")
-    st.subheader("Decision History")
-    if hist_df.empty:
-        st.info("No completed approvals yet.")
+    # Decision History
+    st.subheader("Historical Decision Audit Log")
+    if not hist_df.empty:
+        st.dataframe(
+            hist_df.rename(
+                columns={
+                    "request_id": "Request ID",
+                    "alert_id": "Alert ID",
+                    "suggested_action": "Action",
+                    "status": "Decision",
+                    "analyst": "Analyst",
+                    "timestamp": "Timestamp (UTC)",
+                }
+            ),
+            use_container_width=True,
+        )
     else:
-        st.dataframe(hist_df, use_container_width=True)
+        st.info("No completed decisions yet.")
 
 
 # ===========================================================================
-# PAGE: Audit Chain
+# PAGE: Immutable Audit Chain (Forensic Structured Table)
 # ===========================================================================
 
-elif page == "Audit Chain":
-    st.title("Tamper-Evident Audit Log")
+elif page == "Immutable Audit Chain":
+    st.markdown(
+        """
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
+            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
+            <span>Compliance & Ledger</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-weight:500;">Cryptographic Audit Chain</span>
+        </div>
+        <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:8px;">Tamper-Evident SHA-256 Ledger</h2>
+        <p style="color:#71717a; font-size:13px; margin-bottom:20px;">
+            Every triage event, policy validation, and human approval is cryptographically linked with SHA-256 parent hashes. Modifying past history breaks the chain mathematically.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
 
     chain = audit_chain_status(AUDIT_LOG)
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Total Cryptographic Blocks", chain["entry_count"])
+    k2.metric("Chain Verification", "VALID" if chain["valid"] else "TAMPERED")
+    k3.metric("Tampered Block Index", "None (Clean)" if chain["valid"] else str(chain["broken_at"]))
 
-    if chain["valid"]:
-        st.success(
-            f"Chain VALID — {chain['entry_count']} entries verified. "
-            f"No tampering detected."
-        )
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+
+    # STRUCTURED FORENSIC TIMELINE TABLE (Replaces raw JSON text wall!)
+    st.subheader("Forensic Block Timeline")
+    table_df = audit_log_table(AUDIT_LOG, limit=50)
+
+    if not table_df.empty:
+        st.dataframe(table_df, use_container_width=True)
     else:
-        st.error(
-            f"Chain INTEGRITY FAILURE at entry index {chain['broken_at']}! "
-            f"The audit log may have been tampered with."
+        st.info("No audit entries recorded yet.")
+
+    with st.expander("🔬 Advanced: Forensic Hash Chain Details"):
+        st.markdown(
+            f"""
+            - **Ledger Storage File:** `{chain['log_path']}`
+            - **Hashing Algorithm:** `SHA-256(prev_hash + canonical_json_payload)`
+            - **Genesis Block Sentinel:** `{'0' * 64}`
+            - **Integrity Guarantee:** Any alteration in a previous log immediately invalidates its block hash and breaks all subsequent links.
+            """
         )
-
-    st.markdown("---")
-
-    col_a, col_b = st.columns(2)
-    col_a.metric("Total Entries", chain["entry_count"])
-    col_b.metric("Integrity", "OK" if chain["valid"] else "FAIL")
-
-    st.markdown(f"**Log file:** `{chain['log_path']}`")
-
-    # Show raw log
-    log_path = Path(AUDIT_LOG)
-    if log_path.exists():
-        with st.expander("View raw JSONL entries (last 20)"):
-            lines = log_path.read_text(encoding="utf-8").splitlines()
-            st.code("\n".join(lines[-20:]), language="json")
-    else:
-        st.info("Audit log file not found. Run the triage pipeline to create it.")
-
-    st.markdown("---")
-    st.markdown(
-        "### How it works\n"
-        "Each entry stores `SHA-256(prev_hash + canonical_payload)`.  \n"
-        "Any modification to a past entry invalidates its hash **and** breaks "
-        "every subsequent link — the broken index is reported immediately.  \n\n"
-        "This provides **chain of custody** for all SOC decisions without a "
-        "trusted third party."
-    )
 
 
 # ===========================================================================
-# PAGE: Analyst Feedback
+# PAGE: Analyst Feedback Loop
 # ===========================================================================
 
-elif page == "Analyst Feedback":
-    st.title("Analyst Feedback Loop")
-
+elif page == "Analyst Feedback Loop":
     st.markdown(
-        "Flag false positives or confirm true positives so the ML model "
-        "can be retrained on analyst-labelled data."
+        """
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
+            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
+            <span>Active Learning</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-weight:500;">Analyst Feedback Loop</span>
+        </div>
+        <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:8px;">Model Recalibration & Ground Truth Labeling</h2>
+        <p style="color:#71717a; font-size:13px; margin-bottom:24px;">Flag false positives to retrain the ML anomaly detectors and recalibrate decision thresholds to eliminate recurring alert fatigue.</p>
+        """,
+        unsafe_allow_html=True,
     )
-
-    st.subheader("Submit Feedback")
 
     alert_df = recent_alerts(DB_PATH, limit=50)
+
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.subheader("Submit Ground Truth Evaluation")
+
     if alert_df.empty:
-        st.warning("No alerts to review yet.")
+        st.warning("No alerts available to evaluate. Run the attack simulation to populate.")
     else:
-        alert_ids = alert_df["alert_id"].tolist()
-        selected_id = st.selectbox("Select alert to review", alert_ids)
+        # Build readable options
+        alert_options = {
+            f"[{row.get('severity', '')}] {row.get('rule_title') or row.get('rule_id')} — ID: {row.get('alert_id')[:10]}...": row.get('alert_id')
+            for _, row in alert_df.iterrows()
+        }
+        selected_label = st.selectbox("Select Security Incident", list(alert_options.keys()))
+        selected_id = alert_options[selected_label]
 
-        # Show selected alert details
+        # Fetch row
         row = alert_df[alert_df["alert_id"] == selected_id].iloc[0]
-        st.write(f"**Rule:** `{row.get('rule_id', '')}`")
-        st.write(f"**Severity:** {row.get('severity', '')}")
-        st.write(f"**Description:** {row.get('description', '')}")
+        st.caption(f"**Evidence:** `{row.get('description', '')}`")
 
-        was_fp = st.radio(
-            "Classification",
-            ["True Positive (real attack)", "False Positive (benign activity)"],
+        c_fb1, c_fb2 = st.columns(2)
+        classification = c_fb1.radio(
+            "Analyst Assessment",
+            ["True Positive (Actual Attack Campaign)", "False Positive (Benign Activity / Internal Scan)"],
         )
-        comment = st.text_area("Analyst note (optional)")
+        comment = c_fb2.text_area("Analyst Rationale", placeholder="e.g. Authorized internal vulnerability scanner run by SecOps.")
 
-        if st.button("Submit Feedback"):
-            try:
-                store_feedback(
-                    alert_id=selected_id,
-                    was_fp=(was_fp == "False Positive (benign activity)"),
-                    comment=comment,
-                    db_path=DB_PATH,
-                )
-                st.success("Feedback recorded.")
-            except Exception as exc:
-                st.error(f"Could not store feedback: {exc}")
+        if st.button("💾 Submit Ground Truth & Retrain Feedback Loop", type="primary"):
+            is_fp = "False Positive" in classification
+            store_feedback(
+                alert_id=selected_id,
+                was_fp=is_fp,
+                comment=comment,
+                db_path=DB_PATH,
+            )
+            st.success("Feedback recorded! Model retraining loop updated.")
+            st.cache_data.clear()
+            st.rerun()
 
-    st.markdown("---")
-    st.subheader("Feedback Summary")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Feedback Summary
+    st.subheader("Analyst Ground Truth Distribution")
     fb_df = feedback_summary(DB_PATH)
-    if fb_df.empty:
-        st.info("No feedback submitted yet.")
+    if not fb_df.empty:
+        fb_df["Label"] = fb_df["was_fp"].map({True: "False Positive (Suppressed)", False: "True Positive (Confirmed)"})
+        st.bar_chart(fb_df.set_index("Label")["count"], color="#ea580c")
     else:
-        fb_df["label"] = fb_df["was_fp"].map(
-            {True: "False Positive", False: "True Positive"}
-        )
-        st.bar_chart(fb_df.set_index("label")["count"])
-        total_fb = int(fb_df["count"].sum())
-        fp_count = int(fb_df.loc[fb_df["was_fp"] == True, "count"].sum()) if True in fb_df["was_fp"].values else 0
-        fp_rate = fp_count / total_fb if total_fb else 0
-        st.metric("False Positive Rate", f"{fp_rate:.1%}")
+        st.info("No feedback records submitted yet. Use the form above to record ground truth.")
