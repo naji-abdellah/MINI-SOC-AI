@@ -42,7 +42,6 @@ from dashboard.data import (
 
 st.set_page_config(
     page_title="CY • SECURE | MiniSOC-AI",
-    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -191,7 +190,7 @@ st.sidebar.markdown(
 )
 
 # Quick Action in Sidebar to simulate fresh threats on demand
-if st.sidebar.button("⚡ Trigger Attack Simulation", use_container_width=True):
+if st.sidebar.button("Trigger Attack Simulation", use_container_width=True):
     with st.spinner("Generating simulated multi-stage attack and executing triage..."):
         from scripts.demo import run_pipeline
         run_pipeline(scenario="all", db_path=DB_PATH, audit_path=AUDIT_LOG, launch_dashboard=False)
@@ -218,7 +217,7 @@ st.sidebar.markdown("---")
 st.sidebar.caption(f"**Database:** `{DB_PATH}`")
 st.sidebar.caption(f"**Audit Log:** `{AUDIT_LOG}`")
 
-if st.sidebar.button("🔄 Refresh Telemetry", use_container_width=True):
+if st.sidebar.button("Refresh Telemetry", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
 
@@ -336,7 +335,7 @@ if page == "Dashboard Overview":
         if not vol_df.empty:
             st.bar_chart(vol_df.set_index("hour")["count"], color="#f97316")
         else:
-            st.info("No hourly alert data yet. Click '⚡ Trigger Attack Simulation' in the sidebar.")
+            st.info("No hourly alert data yet. Click 'Trigger Attack Simulation' in the sidebar.")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with c2:
@@ -367,7 +366,7 @@ elif page == "Threats & Alerts":
 
     df = recent_alerts(DB_PATH, limit=100)
     if df.empty:
-        st.info("No alerts found in DuckDB. Use '⚡ Trigger Attack Simulation' in the sidebar.")
+        st.info("No alerts found in DuckDB. Use 'Trigger Attack Simulation' in the sidebar.")
     else:
         sevs = ["ALL"] + sorted([s for s in df["severity"].unique() if s])
         f_col1, f_col2 = st.columns([2, 4])
@@ -459,7 +458,7 @@ elif page == "Human Approval Gate":
         st.markdown(
             """
             <div class="glass-card" style="text-align:center; padding:40px 20px;">
-                <div style="font-size:28px; margin-bottom:12px;">🛡️</div>
+                <div style="width:10px; height:10px; border-radius:50%; background:#22c55e; margin:0 auto 16px auto; box-shadow:0 0 10px #22c55e;"></div>
                 <h3 style="color:#f4f4f5; font-size:18px; font-weight:600; margin-bottom:6px;">Approval Queue is Clear</h3>
                 <p style="color:#71717a; font-size:13px; max-width:480px; margin:0 auto 20px auto;">
                     All AI triage recommendations have been reviewed. Click below to simulate a fresh attack scenario and generate new actions to triage.
@@ -468,14 +467,14 @@ elif page == "Human Approval Gate":
             """,
             unsafe_allow_html=True,
         )
-        if st.button("⚡ Simulate Incoming Threat Campaign & Queue Actions", type="primary"):
+        if st.button("Simulate Incoming Threat Campaign & Queue Actions", type="primary"):
             with st.spinner("Executing attack simulation and AI triage..."):
                 from scripts.demo import run_pipeline
                 run_pipeline(scenario="all", db_path=DB_PATH, audit_path=AUDIT_LOG, launch_dashboard=False)
                 st.cache_data.clear()
                 st.rerun()
     else:
-        st.markdown(f"<p style='color:#fb923c; font-size:14px; font-weight:500; margin-bottom:16px;'>⚠️ {len(pend_df)} Action(s) Requiring Analyst Judgment</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#fb923c; font-size:14px; font-weight:500; margin-bottom:16px;'>{len(pend_df)} Action(s) Requiring Analyst Judgment</p>", unsafe_allow_html=True)
 
         for _, row in pend_df.iterrows():
             req_id = row["request_id"]
@@ -504,7 +503,7 @@ elif page == "Human Approval Gate":
             notes = col2.text_input("Analyst Justification / Notes", placeholder="e.g., Confirmed malicious scanner via threat intel feed", key=f"no_{req_id}")
 
             btn1, btn2 = st.columns(2)
-            if btn1.button(f"⚡ Execute Containment: {action}", key=f"app_{req_id}", use_container_width=True):
+            if btn1.button(f"Execute Containment: {action}", key=f"app_{req_id}", use_container_width=True):
                 res = execute_approval(
                     request_id=req_id,
                     action_type="approve",
@@ -590,7 +589,7 @@ elif page == "Immutable Audit Chain":
     else:
         st.info("No audit entries recorded yet.")
 
-    with st.expander("🔬 Advanced: Forensic Hash Chain Details"):
+    with st.expander("Advanced: Forensic Hash Chain Details"):
         st.markdown(
             f"""
             - **Ledger Storage File:** `{chain['log_path']}`
@@ -646,7 +645,7 @@ elif page == "Analyst Feedback Loop":
         )
         comment = c_fb2.text_area("Analyst Rationale", placeholder="e.g. Authorized internal vulnerability scanner run by SecOps.")
 
-        if st.button("💾 Submit Ground Truth & Retrain Feedback Loop", type="primary"):
+        if st.button("Submit Ground Truth & Retrain Feedback Loop", type="primary"):
             is_fp = "False Positive" in classification
             store_feedback(
                 alert_id=selected_id,
