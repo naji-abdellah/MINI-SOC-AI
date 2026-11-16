@@ -163,3 +163,29 @@ def test_empty_or_missing_db(tmp_path):
     assert df_mitre.empty
     df_pend = pending_approvals(missing_db)
     assert df_pend.empty
+
+
+def test_execute_approval(test_db, tmp_path):
+    from dashboard.data import execute_approval
+    log_file = str(tmp_path / "approval_audit.jsonl")
+
+    res = execute_approval(
+        request_id="r1",
+        action_type="approve",
+        analyst="analyst_alice",
+        notes="Confirmed attack via threat intel",
+        db_path=test_db,
+        audit_log_path=log_file,
+    )
+
+    assert res["status"] == "approved"
+    assert "iptables" in res["containment_cmd"]
+    assert len(res["audit_hash"]) == 64
+
+    # Verify DuckDB updated
+    pend = pending_approvals(test_db)
+    assert len(pend) == 0  # r1 no longer pending
+
+    hist = approval_history(test_db)
+    req_ids = [h for h in hist["request_id"]]
+    assert "r1" in req_ids

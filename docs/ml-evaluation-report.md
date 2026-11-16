@@ -12,7 +12,7 @@ This report compares **Unsupervised Anomaly Detection (Isolation Forest)** again
 | **False Positive Rate (FPR)** | **0.012** | **0.001** | XGBoost minimizes analyst fatigue |
 | **ROC-AUC** | **0.969** | **1.000** | Supervised discrimination |
 | **PR-AUC** | **0.855** | **0.999** | XGBoost dominates under class imbalance |
-| **Scoring Latency** | **10.6 µs/event** | **4.2 µs/event** | Both suitable for CPU real-time scoring |
+| **Scoring Latency** | **9.5 µs/event** | **1.7 µs/event** | Both suitable for CPU real-time scoring |
 
 ---
 

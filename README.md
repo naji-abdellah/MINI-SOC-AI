@@ -116,39 +116,53 @@ minisoc-ai/
 
 ## 🚀 Running the End-to-End Pipeline
 
-MiniSOC-AI is designed to run seamlessly on modest hardware. You can run individual stages or launch the interactive UI:
+MiniSOC-AI is designed to run seamlessly on modest hardware. You can run individual stages or execute the entire pipeline with a single command:
 
-### 1. Ingestion (Normalize Logs to DuckDB)
+### ⚡ 1-Command Automated Demo & Attack Simulator (Recommended)
+Simulates a multi-stage attack campaign (Reconnaissance, SQLi, SSH Brute Force, OS Command Injection), ingests and enriches with Threat Intelligence, evaluates rules, executes AI triage, records to the cryptographic audit log, and launches the dashboard:
+```powershell
+# Run automated end-to-end simulation
+python scripts/demo.py
+
+# Or run simulation and automatically launch the interactive dashboard:
+python scripts/demo.py --dashboard
+```
+
+---
+
+### Step-by-Step CLI Execution
+
+#### 1. Ingestion (Normalize Logs to DuckDB with Threat Intel)
 ```powershell
 python -m ingestion.cli --input data/samples/ --db data/minisoc.duckdb
 ```
 
-### 2. Detection Engine (Rule Evaluation & MITRE Mapping)
+#### 2. Detection Engine (Rule Evaluation & MITRE Mapping)
 ```powershell
 python -m detections.cli --rules detections/rules/ --db data/minisoc.duckdb --coverage
 ```
 
-### 3. ML Anomaly Detection & Distribution Shift Evaluation
+#### 3. ML Anomaly Detection & Distribution Shift Evaluation
 ```powershell
 python -m ml.evaluate
 ```
 
-### 4. LLM Triage with Grounded RAG & Cryptographic Audit
+#### 4. LLM Triage with Grounded RAG & Cryptographic Audit
 ```powershell
 python -m llm.cli --db data/minisoc.duckdb
 ```
 
-### 5. Automated Evaluation & Hallucination Benchmark
+#### 5. Automated Evaluation & Hallucination Benchmark
 ```powershell
 python evals/run_evals.py
 ```
 
-### 6. Launch the Interactive SOC Dashboard
+#### 6. Launch the Interactive SOC Dashboard
 ```powershell
 streamlit run dashboard/app.py
 ```
 
-### 7. Run Full Test Suite (67 Passing Tests)
+#### 7. Run Full Regression Suite (76 Passing Tests)
 ```powershell
 pytest -v
 ```

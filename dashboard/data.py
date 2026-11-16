@@ -194,6 +194,67 @@ def approval_history(db_path: str = _DEFAULT_DB, limit: int = 20) -> pd.DataFram
         )
 
 
+def execute_approval(
+    request_id: str,
+    action_type: str,
+    analyst: str,
+    notes: str = "",
+    db_path: str = _DEFAULT_DB,
+    audit_log_path: str = os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl"),
+) -> dict[str, Any]:
+    """Process an interactive approval or rejection from the dashboard.
+
+    Updates DuckDB, records the action in the cryptographic SHA-256 audit log,
+    and returns simulated SOAR containment command execution details.
+    """
+    from guardrails.approval import ApprovalGate
+    from guardrails.audit_log import AuditLog
+
+    gate = ApprovalGate(db_path=db_path)
+    if action_type == "approve":
+        req = gate.approve(request_id=request_id, analyst=analyst)
+    else:
+        req = gate.reject(request_id=request_id, analyst=analyst, reason=notes)
+
+    # Simulated SOAR containment response:
+    containment_cmd = ""
+    if action_type == "approve":
+        if req.suggested_action == "block_ip":
+            containment_cmd = "SOAR firewall rule applied: iptables -I INPUT 1 -j DROP (source blocked)"
+        elif req.suggested_action == "isolate_host":
+            containment_cmd = "SOAR network isolation applied: networkctl down interface eth0 (host isolated)"
+        elif req.suggested_action == "reset_credentials":
+            containment_cmd = "SOAR IAM triggered: pam_tally2 --reset && force_password_reset"
+        elif req.suggested_action == "notify_analyst":
+            containment_cmd = "SOAR alert broadcasted to SIEM webhook and Slack #soc-incidents"
+        else:
+            containment_cmd = f"SOAR containment command executed for {req.suggested_action}"
+    else:
+        containment_cmd = f"Approval rejected by {analyst}. Containment aborted."
+
+    # Cryptographic Audit Log
+    audit = AuditLog(log_path=audit_log_path)
+    entry = audit.append(
+        "approval_decision",
+        {
+            "request_id": req.request_id,
+            "alert_id": req.alert_id,
+            "status": req.status,
+            "analyst": req.analyst,
+            "suggested_action": req.suggested_action,
+            "containment_outcome": containment_cmd,
+            "analyst_notes": notes,
+        },
+    )
+
+    return {
+        "status": req.status,
+        "request_id": req.request_id,
+        "containment_cmd": containment_cmd,
+        "audit_hash": entry.entry_hash,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Audit log chain status
 # ---------------------------------------------------------------------------

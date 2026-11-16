@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-11-15T00:00:00Z",
+  "indicators": [
+    {
+      "value": "198.51.100.4",
+      "type": "ipv4",
+      "category": "C2_INFRASTRUCTURE",
+      "threat_actor": "APT28 (Fancy Bear)",
+      "confidence": 0.95,
+      "description": "Known Russian GRU C2 node associated with credential harvesting and web exploitation."
+    },
+    {
+      "value": "203.0.113.50",
+      "type": "ipv4",
+      "category": "BRUTE_FORCE_BOTNET",
+      "threat_actor": "Mirai-Variant",
+      "confidence": 0.90,
+      "description": "Active SSH brute-force botnet participant targeting cloud instances."
+    },
+    {
+      "value": "185.220.101.5",
+      "type": "ipv4",
+      "category": "TOR_EXIT_NODE",
+      "threat_actor": "Anonymous",
+      "confidence": 0.99,
+      "description": "Verified high-volume Tor exit node frequently observed in automated scanning."
+    },
+    {
+      "value": "10.0.0.5",
+      "type": "ipv4",
+      "category": "INTERNAL_ROGUE_SCANNER",
+      "threat_actor": "Insider / Compromised Host",
+      "confidence": 0.85,
+      "description": "Flagged staging workstation observed performing unauthorized internal port sweeps."
+    },
+    {
+      "value": "45.33.32.156",
+      "type": "ipv4",
+      "category": "KNOWN_SCANNER",
+      "threat_actor": "Internet Census / Masscan",
+      "confidence": 0.80,
+      "description": "Mass scanning server executing rapid directory and port enumeration."
+    }
+  ]
+}

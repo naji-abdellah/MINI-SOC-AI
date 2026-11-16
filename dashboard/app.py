@@ -33,6 +33,7 @@ from dashboard.data import (
     alert_volume_by_hour,
     approval_history,
     audit_chain_status,
+    execute_approval,
     feedback_summary,
     mitre_coverage,
     pending_approvals,
@@ -240,24 +241,58 @@ elif page == "Approvals":
     pend_df = pending_approvals(DB_PATH)
     hist_df = approval_history(DB_PATH)
 
-    st.subheader(f"Pending ({len(pend_df)})")
+    st.subheader(f"Pending Approvals ({len(pend_df)})")
     if pend_df.empty:
         st.success("No pending approvals — all clear.")
     else:
-        for _, row in pend_df.iterrows():
+        for idx, row in pend_df.iterrows():
+            req_id = row['request_id']
             with st.expander(
-                f"Alert `{row['alert_id']}` — Action: **{row['suggested_action']}**"
+                f"🚨 Alert `{row['alert_id']}` — Recommended Action: **{row['suggested_action'].upper()}**",
+                expanded=True,
             ):
-                st.write(f"**Request ID:** `{row['request_id']}`")
-                st.write(f"**Queued at:** {str(row.get('timestamp', ''))[:19]} UTC")
-                st.write(
-                    "To approve or reject this request, use the CLI:  \n"
-                    f"```\npy -c \""
-                    f"from guardrails.approval import ApprovalGate; "
-                    f"g=ApprovalGate('data/minisoc.duckdb'); "
-                    f"g.approve('{row['request_id']}', 'analyst')"
-                    f"\"\n```"
+                st.markdown(f"**Request ID:** `{req_id}`")
+                st.markdown(f"**Queued at:** `{str(row.get('timestamp', ''))[:19]} UTC`")
+                st.markdown(f"**Suggested Containment:** `{row['suggested_action']}`")
+
+                col_in1, col_in2 = st.columns([1, 2])
+                analyst_name = col_in1.text_input(
+                    "Analyst Identity",
+                    value="analyst_naji",
+                    key=f"analyst_{req_id}",
                 )
+                analyst_note = col_in2.text_input(
+                    "Analyst Justification / Notes",
+                    placeholder="e.g., Confirmed malicious attacker IP from external threat intel",
+                    key=f"notes_{req_id}",
+                )
+
+                col_btn1, col_btn2 = st.columns([1, 1])
+                if col_btn1.button(f"✅ Approve & Execute {row['suggested_action']}", key=f"btn_app_{req_id}", use_container_width=True):
+                    res = execute_approval(
+                        request_id=req_id,
+                        action_type="approve",
+                        analyst=analyst_name,
+                        notes=analyst_note,
+                        db_path=DB_PATH,
+                        audit_log_path=AUDIT_LOG,
+                    )
+                    st.success(f"Containment Action Executed: {res['containment_cmd']}")
+                    st.caption(f"Immutable Audit Hash: `{res['audit_hash']}`")
+                    st.rerun()
+
+                if col_btn2.button("❌ Reject Action", key=f"btn_rej_{req_id}", use_container_width=True):
+                    res = execute_approval(
+                        request_id=req_id,
+                        action_type="reject",
+                        analyst=analyst_name,
+                        notes=analyst_note or "Manually rejected by analyst",
+                        db_path=DB_PATH,
+                        audit_log_path=AUDIT_LOG,
+                    )
+                    st.warning(f"Action Rejected: {res['containment_cmd']}")
+                    st.caption(f"Immutable Audit Hash: `{res['audit_hash']}`")
+                    st.rerun()
 
     st.markdown("---")
     st.subheader("Decision History")

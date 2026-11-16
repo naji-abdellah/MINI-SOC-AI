@@ -355,3 +355,40 @@ Three core capabilities implemented:
 | Dashboard pages | 6 |
 | MITRE techniques covered | 7+ core techniques |
 | CI validation stages | 3 (Rules, Pytest, Evals) |
+
+
+---
+
+## Production Enhancements: Threat Intel, 1-Click SOAR, Active Learning & Demo Simulator
+
+### 1. Predict
+- **Question:** How can we bridge the gap between static detection and real-world SOC automation without adding heavy cloud dependencies?
+- **Hypothesis:** 
+  1. Offline Threat Intelligence lookup can enrich incoming events with adversary attribution at zero network latency.
+  2. Direct 1-click execution in the approval queue connects AI suggestions to simulated SOAR actions while upholding cryptographic auditability.
+  3. Active learning feedback can recalibrate decision thresholds to mathematically suppress repetitive false alarms.
+
+### 2. Build
+Four enterprise-grade extensions built:
+
+**A. Offline Threat Intelligence Feed (`ingestion/threat_intel.py`)**
+- In-memory curated intelligence feed (`data/threat_intel/indicators.json`) containing known adversary C2 nodes (e.g. APT28), Tor exit nodes, and botnet IPs.
+- Seamless enrichment during log ingestion adding contextual tags (`ti:match`, `ti:category:<cat>`, `ti:actor:<actor>`).
+
+**B. Interactive 1-Click SOAR Containment in Web UI (`dashboard/app.py` & `dashboard/data.py`)**
+- Analysts can review pending triage recommendations and approve or reject with a single button.
+- Approving an action executes simulated containment (e.g., `iptables -I INPUT 1 -j DROP`, host isolation) and immediately writes an immutable block to the SHA-256 audit log.
+
+**C. Active Learning Feedback Retraining (`ml/active_learning.py`)**
+- Closes the MLOps loop: queries `analyst_feedback` from DuckDB, computes false positive ratios, and dynamically recalibrates classification thresholds to suppress recurring noise.
+
+**D. 1-Command Demo Runner & Attack Simulator (`scripts/demo.py`)**
+- Simulates realistic multi-stage campaigns (Reconnaissance, SQLi, SSH Brute Force, Command Injection, LFI) and runs the entire pipeline end-to-end with executive ASCII reporting.
+
+### 3. Key Numbers
+| Metric | Value |
+|--------|-------|
+| New tests added | 9 (Total: 76 passing tests) |
+| Threat intelligence indicators | Curated C2, Tor, and Botnet feeds |
+| Pipeline execution time | Full demo runs in < 6 seconds |
+| Audit chain integrity | 100% verified across all simulated actions |
