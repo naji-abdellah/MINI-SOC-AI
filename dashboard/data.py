@@ -1,7 +1,7 @@
 """Dashboard data layer — queries DuckDB for all dashboard views.
 
 All functions return plain Python dicts/lists so the Streamlit layer
-stays decoupled from the database.  Each function opens a fresh
+stays decoupled from the database. Each function opens a fresh
 read-only connection to avoid interfering with write operations from
 the ingestion or detection pipeline.
 """
@@ -23,6 +23,15 @@ def _conn(db_path: str = _DEFAULT_DB) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(db_path, read_only=True)
 
 
+def _get_table_columns(con: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    """Return set of column names for a table."""
+    try:
+        rows = con.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+        return {r[1].lower() for r in rows}
+    except Exception:
+        return set()
+
+
 # ---------------------------------------------------------------------------
 # Alert volume
 # ---------------------------------------------------------------------------
@@ -34,11 +43,17 @@ def alert_volume_by_hour(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
     """
     try:
         con = _conn(db_path)
+        cols = _get_table_columns(con, "alerts")
+        time_col = "timestamp" if "timestamp" in cols else "detected_at" if "detected_at" in cols else None
+        if not time_col:
+            con.close()
+            return pd.DataFrame(columns=["hour", "count"])
+
         df = con.execute(
-            """
+            f"""
             SELECT
-                date_trunc('hour', detected_at) AS hour,
-                COUNT(*)                         AS count
+                date_trunc('hour', {time_col}) AS hour,
+                COUNT(*)                        AS count
             FROM   alerts
             GROUP  BY 1
             ORDER  BY 1
@@ -53,15 +68,15 @@ def alert_volume_by_hour(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
 def alert_severity_counts(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
     """Return alert counts by severity level.
 
-    Columns: ``severity``, ``count``.
+    Columns: ``severity`` (uppercase), ``count``.
     """
     try:
         con = _conn(db_path)
         df = con.execute(
             """
-            SELECT severity, COUNT(*) AS count
+            SELECT UPPER(severity) AS severity, COUNT(*) AS count
             FROM   alerts
-            GROUP  BY severity
+            GROUP  BY 1
             ORDER  BY count DESC
             """
         ).df()
@@ -75,16 +90,26 @@ def recent_alerts(db_path: str = _DEFAULT_DB, limit: int = 50) -> pd.DataFrame:
     """Return the *limit* most recent alerts.
 
     Columns: ``alert_id``, ``rule_id``, ``severity``, ``detected_at``,
-    ``description``.
+    ``rule_title``, ``description``.
     """
     try:
         con = _conn(db_path)
+        cols = _get_table_columns(con, "alerts")
+        time_col = "timestamp" if "timestamp" in cols else "detected_at" if "detected_at" in cols else "NULL"
+        desc_col = "evidence" if "evidence" in cols else "description" if "description" in cols else "''"
+        title_col = "rule_title" if "rule_title" in cols else "rule_id"
+
         df = con.execute(
             f"""
-            SELECT alert_id, rule_id, severity, detected_at,
-                   description
+            SELECT 
+                alert_id, 
+                rule_id, 
+                UPPER(severity) AS severity, 
+                {time_col} AS detected_at,
+                {title_col} AS rule_title, 
+                {desc_col} AS description
             FROM   alerts
-            ORDER  BY detected_at DESC
+            ORDER  BY {time_col} DESC
             LIMIT  {int(limit)}
             """
         ).df()
@@ -92,7 +117,7 @@ def recent_alerts(db_path: str = _DEFAULT_DB, limit: int = 50) -> pd.DataFrame:
         return df
     except Exception:
         return pd.DataFrame(
-            columns=["alert_id", "rule_id", "severity", "detected_at", "description"]
+            columns=["alert_id", "rule_id", "severity", "detected_at", "rule_title", "description"]
         )
 
 
@@ -103,9 +128,7 @@ def recent_alerts(db_path: str = _DEFAULT_DB, limit: int = 50) -> pd.DataFrame:
 def mitre_coverage(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
     """Return alert counts grouped by MITRE technique ID.
 
-    Columns: ``mitre_technique_id``, ``count``.
-    Falls back to a static mapping from rule names when the alerts
-    table has no ``mitre_technique_id`` column.
+    Columns: ``mitre_technique_id``, ``mitre_technique_name``, ``count``.
     """
     _RULE_TO_MITRE: dict[str, str] = {
         "sqli_error_or_union": "T1190",
@@ -121,20 +144,36 @@ def mitre_coverage(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
     }
     try:
         con = _conn(db_path)
-        rows = con.execute(
-            "SELECT rule_id, COUNT(*) AS cnt FROM alerts GROUP BY rule_id"
-        ).fetchall()
+        cols = _get_table_columns(con, "alerts")
+        if "mitre_technique_id" in cols:
+            name_expr = "mitre_technique_name" if "mitre_technique_name" in cols else "''"
+            df = con.execute(
+                f"""
+                SELECT 
+                    mitre_technique_id, 
+                    {name_expr} AS mitre_technique_name, 
+                    COUNT(*) AS count 
+                FROM alerts 
+                GROUP BY 1, 2 
+                ORDER BY count DESC
+                """
+            ).df()
+        else:
+            rows = con.execute(
+                "SELECT rule_id, COUNT(*) AS cnt FROM alerts GROUP BY rule_id"
+            ).fetchall()
+            records: dict[str, int] = {}
+            for rule_id, cnt in rows:
+                mid = _RULE_TO_MITRE.get(rule_id, "T0000")
+                records[mid] = records.get(mid, 0) + cnt
+            df = pd.DataFrame(
+                [{"mitre_technique_id": k, "mitre_technique_name": "", "count": v} for k, v in records.items()]
+            ).sort_values("count", ascending=False)
+
         con.close()
-        records: dict[str, int] = {}
-        for rule_id, cnt in rows:
-            mid = _RULE_TO_MITRE.get(rule_id, "T0000")
-            records[mid] = records.get(mid, 0) + cnt
-        df = pd.DataFrame(
-            [{"mitre_technique_id": k, "count": v} for k, v in records.items()]
-        ).sort_values("count", ascending=False)
         return df
     except Exception:
-        return pd.DataFrame(columns=["mitre_technique_id", "count"])
+        return pd.DataFrame(columns=["mitre_technique_id", "mitre_technique_name", "count"])
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +188,13 @@ def pending_approvals(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
     """
     try:
         con = _conn(db_path)
+        tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+        if "approvals" not in tables:
+            con.close()
+            return pd.DataFrame(
+                columns=["request_id", "alert_id", "suggested_action", "timestamp"]
+            )
+
         df = con.execute(
             """
             SELECT request_id, alert_id, suggested_action, timestamp
@@ -173,6 +219,16 @@ def approval_history(db_path: str = _DEFAULT_DB, limit: int = 20) -> pd.DataFram
     """
     try:
         con = _conn(db_path)
+        tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+        if "approvals" not in tables:
+            con.close()
+            return pd.DataFrame(
+                columns=[
+                    "request_id", "alert_id", "suggested_action",
+                    "status", "analyst", "timestamp",
+                ]
+            )
+
         df = con.execute(
             f"""
             SELECT request_id, alert_id, suggested_action,
@@ -294,12 +350,6 @@ def store_feedback(
     """Persist analyst feedback for a given alert.
 
     Creates the ``analyst_feedback`` table if it doesn't exist.
-
-    Args:
-        alert_id: The alert being reviewed.
-        was_fp: True if the analyst marked the alert as a false positive.
-        comment: Free-text analyst note.
-        db_path: Path to DuckDB file.
     """
     con = duckdb.connect(db_path)
     con.execute(
@@ -333,6 +383,11 @@ def feedback_summary(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
     """
     try:
         con = _conn(db_path)
+        tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+        if "analyst_feedback" not in tables:
+            con.close()
+            return pd.DataFrame(columns=["was_fp", "count"])
+
         df = con.execute(
             """
             SELECT was_fp, COUNT(*) AS count

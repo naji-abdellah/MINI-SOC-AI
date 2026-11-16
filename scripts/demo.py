@@ -109,8 +109,10 @@ def run_pipeline(
 
     # 4. LLM Triage & Guardrails
     print("[*] Step 4: Dispatching alerts to LLM Triage with MITRE RAG & Hash Chain...")
+    from guardrails.approval import ApprovalGate
     audit = AuditLog(log_path=audit_path)
-    triage_coord = TriageCoordinator(audit_log=audit)
+    gate = ApprovalGate(db_path=db_path)
+    triage_coord = TriageCoordinator(approval_gate=gate, audit_log=audit)
 
     triaged_count = 0
     for alert in alerts[:5]:  # triage up to 5 for fast demo

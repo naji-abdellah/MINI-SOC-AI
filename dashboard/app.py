@@ -174,12 +174,14 @@ elif page == "Alerts":
         # Render with coloured severity column
         for _, row in df.iterrows():
             badge = _severity_badge(str(row.get("severity", "")))
+            title = row.get("rule_title") or row.get("rule_id", "")
             with st.expander(
-                f"[{row.get('rule_id', '')}]  {str(row.get('detected_at', ''))[:19]}"
+                f"[{row.get('severity', '')}] {title} — {str(row.get('detected_at', ''))[:19]}"
             ):
                 st.markdown(f"**Severity:** {badge}", unsafe_allow_html=True)
                 st.write(f"**Alert ID:** `{row.get('alert_id', '')}`")
-                st.write(f"**Description:** {row.get('description', '')}")
+                st.write(f"**Rule ID:** `{row.get('rule_id', '')}`")
+                st.write(f"**Description / Evidence:** {row.get('description', '')}")
 
 
 # ===========================================================================
@@ -197,6 +199,7 @@ elif page == "MITRE Coverage":
         "T1046": "Network Service Discovery",
         "T1078": "Valid Accounts",
         "T1003": "OS Credential Dumping",
+        "T1595.002": "Active Scanning: Vulnerability Scanning",
         "T0000": "Unknown / Unmapped",
     }
 
@@ -204,8 +207,9 @@ elif page == "MITRE Coverage":
     if df.empty:
         st.info("No alert data for MITRE mapping.")
     else:
-        df["technique"] = df["mitre_technique_id"].map(
-            lambda x: f"{x} — {_MITRE_NAMES.get(x, 'Unknown')}"
+        df["technique"] = df.apply(
+            lambda r: f"{r['mitre_technique_id']} — {r.get('mitre_technique_name') or _MITRE_NAMES.get(r['mitre_technique_id'], 'Unknown')}",
+            axis=1,
         )
         st.bar_chart(df.set_index("technique")["count"])
 
@@ -223,7 +227,7 @@ elif page == "MITRE Coverage":
         )
 
         total_known = len(
-            [t for t in df["mitre_technique_id"] if t != "T0000"]
+            [t for t in df["mitre_technique_id"] if t and t != "T0000"]
         )
         st.info(
             f"Coverage: {total_known} distinct MITRE techniques triggered "

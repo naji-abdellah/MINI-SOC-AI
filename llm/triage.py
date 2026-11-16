@@ -42,7 +42,7 @@ class TriageCoordinator:
         self.client = llm_client or OllamaClient()
         self.policy = policy or PolicyEnforcer()
         self.approval_gate = approval_gate or ApprovalGate(
-            db_path=os.getenv("MINISOC_DB", ":memory:")
+            db_path=os.getenv("MINISOC_DB", "data/minisoc.duckdb")
         )
         self.audit_log = audit_log or AuditLog()
 
