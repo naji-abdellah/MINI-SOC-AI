@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import duckdb
 import pandas as pd
 
-_DEFAULT_DB = os.getenv("MINISOC_DB", "data/minisoc.duckdb")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_DB = os.getenv("MINISOC_DB", str(_REPO_ROOT / "data" / "minisoc.duckdb"))
+_DEFAULT_AUDIT = os.getenv("AUDIT_LOG_PATH", str(_REPO_ROOT / "data" / "audit_log.jsonl"))
 
 
 def _conn(db_path: str = _DEFAULT_DB) -> duckdb.DuckDBPyConnection:
@@ -52,8 +55,8 @@ def alert_volume_by_hour(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
         df = con.execute(
             f"""
             SELECT
-                date_trunc('hour', {time_col}) AS hour,
-                COUNT(*)                        AS count
+                strftime(date_trunc('hour', {time_col}), '%Y-%m-%d %H:%M') AS hour,
+                COUNT(*)                                                     AS count
             FROM   alerts
             GROUP  BY 1
             ORDER  BY 1
@@ -147,14 +150,19 @@ def mitre_coverage(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
         cols = _get_table_columns(con, "alerts")
         if "mitre_technique_id" in cols:
             name_expr = "mitre_technique_name" if "mitre_technique_name" in cols else "''"
+            tactic_expr = "mitre_tactic" if "mitre_tactic" in cols else "''"
             df = con.execute(
                 f"""
                 SELECT 
+                    {tactic_expr} AS mitre_tactic,
                     mitre_technique_id, 
                     {name_expr} AS mitre_technique_name, 
                     COUNT(*) AS count 
                 FROM alerts 
-                GROUP BY 1, 2 
+                WHERE mitre_technique_id IS NOT NULL
+                  AND mitre_technique_id != ''
+                  AND mitre_technique_id != 'T0000'
+                GROUP BY 1, 2, 3 
                 ORDER BY count DESC
                 """
             ).df()
@@ -256,7 +264,7 @@ def execute_approval(
     analyst: str,
     notes: str = "",
     db_path: str = _DEFAULT_DB,
-    audit_log_path: str = os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl"),
+    audit_log_path: str = _DEFAULT_AUDIT,
 ) -> dict[str, Any]:
     """Process an interactive approval or rejection from the dashboard.
 
@@ -316,7 +324,7 @@ def execute_approval(
 # ---------------------------------------------------------------------------
 
 def audit_chain_status(
-    log_path: str = os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl"),
+    log_path: str = _DEFAULT_AUDIT,
 ) -> dict[str, Any]:
     """Return audit-chain verification results.
 
@@ -338,7 +346,7 @@ def audit_chain_status(
 
 
 def audit_log_table(
-    log_path: str = os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl"),
+    log_path: str = _DEFAULT_AUDIT,
     limit: int = 25,
 ) -> pd.DataFrame:
     """Return recent audit log entries formatted as a clean, structured DataFrame for analysts.
