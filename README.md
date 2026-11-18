@@ -162,7 +162,7 @@ python evals/run_evals.py
 streamlit run dashboard/app.py
 ```
 
-#### 7. Run Full Regression Suite (76 Passing Tests)
+#### 7. Run Full Regression Suite (77 Passing Tests)
 ```powershell
 pytest -v
 ```
