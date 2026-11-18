@@ -1,4 +1,4 @@
-"""MiniSOC-AI / CY • SECURE Streamlit SOC Analyst Console.
+"""MiniSOC-AI Streamlit SOC Analyst Console.
 
 High-productivity, analyst-centric security operations interface:
 - Modern dark aesthetic inspired by Linear/Vercel (deep black, glassmorphism, glowing accents).
@@ -41,7 +41,7 @@ from dashboard.data import (
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="CY • SECURE | MiniSOC-AI",
+    page_title="MiniSOC-AI | Security Operations",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -50,7 +50,7 @@ DB_PATH = os.getenv("MINISOC_DB", "data/minisoc.duckdb")
 AUDIT_LOG = os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl")
 
 # ---------------------------------------------------------------------------
-# Global CSS Injection: CY • SECURE Dark Glassmorphism Theme
+# Global CSS Injection: MiniSOC-AI Dark Glassmorphism Theme
 # ---------------------------------------------------------------------------
 
 st.markdown(
@@ -182,7 +182,7 @@ st.sidebar.markdown(
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:24px; padding-left:4px;">
         <div style="width:10px; height:10px; border-radius:50%; background:#f97316; box-shadow:0 0 12px #f97316;"></div>
         <span style="color:#f4f4f5; font-weight:600; font-size:17px; letter-spacing:-0.4px;">
-            CY • SECURE <span style="font-size:11px; color:#f97316; font-weight:500; margin-left:2px;">MiniSOC</span>
+            MINISOC-AI <span style="font-size:11px; color:#f97316; font-weight:500; margin-left:2px;">SOC Pipeline</span>
         </span>
     </div>
     """,
@@ -261,9 +261,9 @@ if page == "Dashboard Overview":
     st.markdown(
         """
         <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
-            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
-            <span>Operations</span> <span style="color:#3f3f46;">/</span>
-            <span style="color:#f4f4f5; font-weight:500;">Executive Dashboard</span>
+            <span style="color:#f97316; font-family:monospace; font-weight:600;">minisoc-ai</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#a1a1aa; font-family:monospace;">dashboard</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-family:monospace; font-weight:500;">app.py</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -355,9 +355,9 @@ elif page == "Threats & Alerts":
     st.markdown(
         """
         <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
-            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
-            <span>Threats</span> <span style="color:#3f3f46;">/</span>
-            <span style="color:#f4f4f5; font-weight:500;">Active Threat Telemetry</span>
+            <span style="color:#f97316; font-family:monospace; font-weight:600;">minisoc-ai</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#a1a1aa; font-family:monospace;">detections</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-family:monospace; font-weight:500;">alerts</span>
         </div>
         <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:16px;">Active Incident Queue</h2>
         """,
@@ -398,9 +398,9 @@ elif page == "MITRE Attack Surface":
     st.markdown(
         """
         <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
-            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
-            <span>Surface Map</span> <span style="color:#3f3f46;">/</span>
-            <span style="color:#f4f4f5; font-weight:500;">MITRE ATT&CK Matrix</span>
+            <span style="color:#f97316; font-family:monospace; font-weight:600;">minisoc-ai</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#a1a1aa; font-family:monospace;">detections</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-family:monospace; font-weight:500;">mitre_coverage</span>
         </div>
         <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:16px;">Attack Surface & Technique Distribution</h2>
         """,
@@ -441,9 +441,9 @@ elif page == "Human Approval Gate":
     st.markdown(
         """
         <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
-            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
-            <span>SOAR Automation</span> <span style="color:#3f3f46;">/</span>
-            <span style="color:#f4f4f5; font-weight:500;">Human-in-the-Loop Approval Gate</span>
+            <span style="color:#f97316; font-family:monospace; font-weight:600;">minisoc-ai</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#a1a1aa; font-family:monospace;">guardrails</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-family:monospace; font-weight:500;">approval.py</span>
         </div>
         <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:8px;">AI Containment Recommendations</h2>
         <p style="color:#71717a; font-size:13px; margin-bottom:24px;">The AI pipeline investigates events in the background, applies policy guardrails, and requires human authorization before applying automated containment actions.</p>
@@ -560,9 +560,9 @@ elif page == "Immutable Audit Chain":
     st.markdown(
         """
         <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
-            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
-            <span>Compliance & Ledger</span> <span style="color:#3f3f46;">/</span>
-            <span style="color:#f4f4f5; font-weight:500;">Cryptographic Audit Chain</span>
+            <span style="color:#f97316; font-family:monospace; font-weight:600;">minisoc-ai</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#a1a1aa; font-family:monospace;">guardrails</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-family:monospace; font-weight:500;">audit_log.py</span>
         </div>
         <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:8px;">Tamper-Evident SHA-256 Ledger</h2>
         <p style="color:#71717a; font-size:13px; margin-bottom:20px;">
@@ -608,9 +608,9 @@ elif page == "Analyst Feedback Loop":
     st.markdown(
         """
         <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#71717a; margin-bottom:16px;">
-            <span>CY • SECURE</span> <span style="color:#3f3f46;">/</span>
-            <span>Active Learning</span> <span style="color:#3f3f46;">/</span>
-            <span style="color:#f4f4f5; font-weight:500;">Analyst Feedback Loop</span>
+            <span style="color:#f97316; font-family:monospace; font-weight:600;">minisoc-ai</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#a1a1aa; font-family:monospace;">ml</span> <span style="color:#3f3f46;">/</span>
+            <span style="color:#f4f4f5; font-family:monospace; font-weight:500;">active_learning.py</span>
         </div>
         <h2 style="color:#f4f4f5; font-size:22px; font-weight:600; margin-bottom:8px;">Model Recalibration & Ground Truth Labeling</h2>
         <p style="color:#71717a; font-size:13px; margin-bottom:24px;">Flag false positives to retrain the ML anomaly detectors and recalibrate decision thresholds to eliminate recurring alert fatigue.</p>
