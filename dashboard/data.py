@@ -136,12 +136,12 @@ def mitre_coverage(db_path: str = _DEFAULT_DB) -> pd.DataFrame:
     _RULE_TO_MITRE: dict[str, str] = {
         "sqli_error_or_union": "T1190",
         "path_traversal_lfi": "T1083",
-        "ssh_brute_force": "T1110",
-        "web_login_brute_force": "T1110",
+        "ssh_brute_force": "T1110.001",
+        "web_login_brute_force": "T1110.001",
         "os_command_injection": "T1059",
-        "scanner_user_agents": "T1046",
+        "scanner_user_agents": "T1595.002",
         "sensitive_file_probing": "T1083",
-        "xss_script_injection": "T1059",
+        "xss_script_injection": "T1190",
         "admin_access_after_brute_force": "T1078",
         "sensitive_os_credential_access": "T1003",
     }
@@ -280,21 +280,22 @@ def execute_approval(
     else:
         req = gate.reject(request_id=request_id, analyst=analyst, reason=notes)
 
-    # Simulated SOAR containment response:
+    # Simulated SOAR containment response with concrete target parameters:
     containment_cmd = ""
+    target = getattr(req, "target_entity", None) or "198.51.100.25"
     if action_type == "approve":
         if req.suggested_action == "block_ip":
-            containment_cmd = "SOAR firewall rule applied: iptables -I INPUT 1 -j DROP (source blocked)"
+            containment_cmd = f"SOAR firewall rule applied: iptables -I INPUT 1 -s {target} -j DROP"
         elif req.suggested_action == "isolate_host":
-            containment_cmd = "SOAR network isolation applied: networkctl down interface eth0 (host isolated)"
+            containment_cmd = f"SOAR network isolation applied: networkctl down interface eth0 (target host: {target})"
         elif req.suggested_action == "reset_credentials":
-            containment_cmd = "SOAR IAM triggered: pam_tally2 --reset && force_password_reset"
+            containment_cmd = f"SOAR IAM triggered: pam_tally2 --user={target} --reset && force_password_reset {target}"
         elif req.suggested_action == "notify_analyst":
-            containment_cmd = "SOAR alert broadcasted to SIEM webhook and Slack #soc-incidents"
+            containment_cmd = f"SOAR alert broadcasted for {target} to SIEM webhook and Slack #soc-incidents"
         else:
-            containment_cmd = f"SOAR containment command executed for {req.suggested_action}"
+            containment_cmd = f"SOAR containment command executed for {req.suggested_action} on target {target}"
     else:
-        containment_cmd = f"Approval rejected by {analyst}. Containment aborted."
+        containment_cmd = f"Approval rejected by {analyst}. Containment for {target} aborted."
 
     # Cryptographic Audit Log
     audit = AuditLog(log_path=audit_log_path)

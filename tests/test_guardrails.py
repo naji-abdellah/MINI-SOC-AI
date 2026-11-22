@@ -59,6 +59,20 @@ class TestPolicyEnforcer:
         assert sanitized.suggested_action == SAFE_FALLBACK_ACTION
         assert "wipe_database" in sanitized.reasoning
 
+    def test_policy_severity_floor_and_dismissal_override(self):
+        """HIGH/CRITICAL alerts cannot have their severity downgraded to LOW or action set to dismiss_alert."""
+        enforcer = PolicyEnforcer()
+        downgraded_report = TriageReport.model_construct(
+            **_make_report().model_dump() | {
+                "assessed_severity": "LOW",
+                "suggested_action": "dismiss_alert",
+            }
+        )
+        sanitized = enforcer.sanitize_report(downgraded_report, rule_severity="HIGH")
+        assert sanitized.suggested_action == "notify_analyst", "dismiss_alert must be overridden on HIGH rule"
+        assert sanitized.assessed_severity == "MEDIUM", "LOW severity must be raised to floor MEDIUM"
+        assert "[POLICY OVERRIDE]" in sanitized.reasoning
+
     def test_valid_action_not_mutated(self):
         """A report with a valid action must be returned unchanged."""
         enforcer = PolicyEnforcer()
@@ -103,6 +117,12 @@ class TestApprovalGate:
         approved = gate.approve(req.request_id, analyst="alice")
         assert approved.status == "approved"
         assert approved.analyst == "alice"
+
+        # Attempting to re-approve or reject an already approved request must raise ValueError
+        with pytest.raises(ValueError):
+            gate.approve(req.request_id, analyst="alice")
+        with pytest.raises(ValueError):
+            gate.reject(req.request_id, analyst="bob")
 
     def test_approval_gate_rejection(self):
         """Submit -> reject stores reason in analyst_notes."""

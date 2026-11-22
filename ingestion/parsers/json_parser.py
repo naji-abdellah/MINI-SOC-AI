@@ -36,7 +36,8 @@ def parse_json_log(line: str, log_source: str = "json_log") -> Optional[Normaliz
         raw_msg = data["log"].strip()
         ts_str = data["time"]
         try:
-            dt = date_parser.parse(ts_str).astimezone(timezone.utc)
+            parsed_dt = date_parser.parse(ts_str)
+            dt = parsed_dt.replace(tzinfo=timezone.utc) if parsed_dt.tzinfo is None else parsed_dt.astimezone(timezone.utc)
         except Exception:
             return None
 
@@ -77,7 +78,8 @@ def parse_json_log(line: str, log_source: str = "json_log") -> Optional[Normaliz
     ts_field = data.get("@timestamp") or data.get("timestamp") or data.get("time")
     if ts_field:
         try:
-            dt = date_parser.parse(str(ts_field)).astimezone(timezone.utc)
+            parsed_dt = date_parser.parse(str(ts_field))
+            dt = parsed_dt.replace(tzinfo=timezone.utc) if parsed_dt.tzinfo is None else parsed_dt.astimezone(timezone.utc)
         except Exception:
             return None
     else:

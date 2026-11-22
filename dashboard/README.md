@@ -7,7 +7,9 @@ A lightweight Streamlit web application providing:
 - Interactive triage approval queue with LLM reasoning and retrieved context.
 - Audit log tamper verification panel.
 
-## Roadmap (Milestone 6)
-- [ ] Streamlit application layout (`app.py`).
-- [ ] DuckDB query connectors for real-time visualization.
-- [ ] Analyst feedback collection interface.
+## Implementation Status (Milestone 6)
+- [x] Streamlit application layout (`app.py`) with modern cyber/dark aesthetics.
+- [x] DuckDB query connectors for real-time visualization (`data.py`).
+- [x] Interactive human-in-the-loop approval queue with SOAR CLI containment integration.
+- [x] Tamper-evident SHA-256 audit log cryptographic chain verification panel.
+- [x] Analyst active learning feedback collection interface with empirical threshold calibration.

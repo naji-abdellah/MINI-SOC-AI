@@ -1,13 +1,16 @@
 """Human-in-the-Loop Approval Gate.
 
 Every triage report must pass through an analyst approval step before
-any automated containment action is executed.  Approval records are
+any automated containment action is executed. Approval records are
 persisted to DuckDB so they survive process restarts.
+Enforces strict state transitions (pending -> approved | rejected).
 """
 
-import uuid
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Optional
+import uuid
 
 import duckdb
 from pydantic import BaseModel, Field
@@ -18,21 +21,12 @@ ApprovalStatus = str  # "pending" | "approved" | "rejected"
 
 
 class ApprovalRequest(BaseModel):
-    """An analyst approval request linked to a triage report.
-
-    Attributes:
-        request_id: Unique UUID for this approval request.
-        alert_id: The alert that was triaged.
-        suggested_action: The LLM-suggested containment action.
-        analyst_notes: Optional notes captured at approval/rejection.
-        status: Current lifecycle state.
-        analyst: Identity of the analyst who acted (empty when pending).
-        timestamp: UTC wall-clock time of the last state change.
-    """
+    """An analyst approval request linked to a triage report."""
 
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     alert_id: str
     suggested_action: AllowedAction
+    target_entity: Optional[str] = None
     analyst_notes: str = ""
     status: ApprovalStatus = "pending"
     analyst: str = ""
@@ -42,15 +36,7 @@ class ApprovalRequest(BaseModel):
 
 
 class ApprovalGate:
-    """Submit, approve, and reject triage reports.
-
-    Approval records are stored in a ``approvals`` table inside the
-    given DuckDB database path.
-
-    Args:
-        db_path: Path to the DuckDB file.  Uses an in-memory database
-            when set to ``":memory:"``.
-    """
+    """Submit, approve, and reject triage reports."""
 
     _CREATE_TABLE = """
         CREATE TABLE IF NOT EXISTS approvals (
@@ -60,7 +46,8 @@ class ApprovalGate:
             analyst_notes VARCHAR,
             status       VARCHAR NOT NULL,
             analyst      VARCHAR,
-            timestamp    TIMESTAMPTZ NOT NULL
+            timestamp    TIMESTAMPTZ NOT NULL,
+            target_entity VARCHAR
         )
     """
 
@@ -68,24 +55,28 @@ class ApprovalGate:
         self._db_path = db_path
         self._conn = duckdb.connect(db_path)
         self._conn.execute(self._CREATE_TABLE)
+        # Migrate table if target_entity column was missing in older schema
+        try:
+            cols = [r[1].lower() for r in self._conn.execute("PRAGMA table_info('approvals')").fetchall()]
+            if "target_entity" not in cols:
+                self._conn.execute("ALTER TABLE approvals ADD COLUMN target_entity VARCHAR")
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def submit(self, report: TriageReport) -> ApprovalRequest:
-        """Create a pending approval request for *report*.
-
-        Args:
-            report: The sanitized triage report from the LLM pipeline.
-
-        Returns:
-            A newly created :class:`ApprovalRequest` with status
-            ``"pending"``.
-        """
+    def submit(
+        self,
+        report: TriageReport,
+        target_entity: Optional[str] = None,
+    ) -> ApprovalRequest:
+        """Create a pending approval request for *report*."""
         req = ApprovalRequest(
             alert_id=report.alert_id,
             suggested_action=report.suggested_action,
+            target_entity=target_entity,
         )
         self._upsert(req)
         return req
@@ -93,17 +84,15 @@ class ApprovalGate:
     def approve(self, request_id: str, analyst: str) -> ApprovalRequest:
         """Mark a pending request as approved.
 
-        Args:
-            request_id: ID of the request to approve.
-            analyst: Identity string of the approving analyst.
-
-        Returns:
-            Updated :class:`ApprovalRequest` with status ``"approved"``.
-
         Raises:
-            KeyError: If *request_id* does not exist.
+            KeyError: If request_id does not exist.
+            ValueError: If request is not in 'pending' status.
         """
         req = self._fetch(request_id)
+        if req.status != "pending":
+            raise ValueError(
+                f"Cannot approve request '{request_id}': status is already '{req.status}'"
+            )
         req.status = "approved"
         req.analyst = analyst
         req.timestamp = datetime.now(timezone.utc)
@@ -115,18 +104,15 @@ class ApprovalGate:
     ) -> ApprovalRequest:
         """Mark a pending request as rejected.
 
-        Args:
-            request_id: ID of the request to reject.
-            analyst: Identity string of the rejecting analyst.
-            reason: Human-readable rejection reason stored as notes.
-
-        Returns:
-            Updated :class:`ApprovalRequest` with status ``"rejected"``.
-
         Raises:
-            KeyError: If *request_id* does not exist.
+            KeyError: If request_id does not exist.
+            ValueError: If request is not in 'pending' status.
         """
         req = self._fetch(request_id)
+        if req.status != "pending":
+            raise ValueError(
+                f"Cannot reject request '{request_id}': status is already '{req.status}'"
+            )
         req.status = "rejected"
         req.analyst = analyst
         req.analyst_notes = reason
@@ -135,11 +121,7 @@ class ApprovalGate:
         return req
 
     def get(self, request_id: str) -> ApprovalRequest:
-        """Retrieve an approval request by ID.
-
-        Raises:
-            KeyError: If not found.
-        """
+        """Retrieve an approval request by ID."""
         return self._fetch(request_id)
 
     # ------------------------------------------------------------------
@@ -152,8 +134,8 @@ class ApprovalGate:
             """
             INSERT OR REPLACE INTO approvals
                 (request_id, alert_id, suggested_action,
-                 analyst_notes, status, analyst, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 analyst_notes, status, analyst, timestamp, target_entity)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 req.request_id,
@@ -163,13 +145,15 @@ class ApprovalGate:
                 req.status,
                 req.analyst,
                 req.timestamp,
+                req.target_entity,
             ],
         )
 
     def _fetch(self, request_id: str) -> ApprovalRequest:
         """Load an :class:`ApprovalRequest` from DuckDB by ID."""
         rows = self._conn.execute(
-            "SELECT * FROM approvals WHERE request_id = ?", [request_id]
+            "SELECT request_id, alert_id, suggested_action, analyst_notes, status, analyst, timestamp, target_entity FROM approvals WHERE request_id = ?",
+            [request_id],
         ).fetchall()
         if not rows:
             raise KeyError(f"ApprovalRequest not found: {request_id}")
@@ -182,4 +166,5 @@ class ApprovalGate:
             status=row[4],
             analyst=row[5] or "",
             timestamp=row[6],
+            target_entity=row[7] if len(row) > 7 else None,
         )

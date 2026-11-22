@@ -1,24 +1,30 @@
-"""Tamper-Evident SHA-256 Hash-Chain Audit Log.
+"""Tamper-Evident SHA-256 / HMAC Hash-Chain Audit Log.
 
-Every event appended to the log includes the SHA-256 hash of the
-previous entry, forming a blockchain-style chain.  Any post-hoc
-modification of a log entry is detectable by ``verify_chain()``.
+Every event appended to the log cryptographically seals:
+- Previous block hash (prev_hash)
+- Entry UUID (entry_id)
+- Entry type / category (entry_type)
+- Canonical ISO 8601 timestamp (timestamp)
+- Canonical JSON payload (payload)
 
-Storage: append-only JSONL file at ``data/audit_log.jsonl``
-(configurable via the ``AUDIT_LOG_PATH`` environment variable or the
-``log_path`` constructor argument).
+Any modification of log contents or metadata is detectable by ``verify_chain()``.
+Supports optional HMAC anchoring (via AUDIT_HMAC_KEY) to prevent truncation
+and full-file rewrite attacks.
 
-Genesis block convention: the very first entry uses
-``prev_hash = "0" * 64`` (64 zeros).
+Storage: append-only JSONL file at ``data/audit_log.jsonl`` (configurable).
+Genesis block convention: the very first entry uses ``prev_hash = "0" * 64``.
 """
 
+from __future__ import annotations
+
+from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
 import os
-import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Tuple
+import uuid
 
 from pydantic import BaseModel, Field
 
@@ -29,85 +35,93 @@ DEFAULT_LOG_PATH: str = os.getenv(
 
 
 class AuditEntry(BaseModel):
-    """A single entry in the tamper-evident audit log.
-
-    Attributes:
-        entry_id: Unique UUID for this entry.
-        timestamp: UTC time when the entry was appended.
-        entry_type: Semantic category — ``"alert"``, ``"triage"``, or
-            ``"approval"``.
-        payload: Arbitrary JSON-serialisable event data.
-        prev_hash: SHA-256 hash of the immediately preceding entry
-            (``"0"*64`` for the genesis block).
-        entry_hash: SHA-256 of ``prev_hash + canonical_payload_json``.
-            Computed by :meth:`AuditLog.append`; set to empty string
-            until hashing occurs.
-    """
+    """A single entry in the tamper-evident audit log."""
 
     entry_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    entry_type: str  # "alert" | "triage" | "approval"
+    entry_type: str  # "alert" | "triage" | "approval" | "approval_decision"
     payload: dict[str, Any]
     prev_hash: str = GENESIS_HASH
     entry_hash: str = ""
 
 
-def _compute_hash(prev_hash: str, payload: dict[str, Any]) -> str:
-    """Return SHA-256(prev_hash + canonical_payload_json).
-
-    The payload is serialized with sorted keys and no extra whitespace
-    to guarantee determinism across Python versions.
+def _compute_hash(
+    prev_hash: str,
+    payload: dict[str, Any],
+    entry_id: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    timestamp_str: Optional[str] = None,
+    secret_key: Optional[str] = None,
+) -> str:
+    """Return cryptographic hash sealing previous hash, metadata, and canonical payload.
 
     Args:
-        prev_hash: Hash of the previous entry.
-        payload: Arbitrary dict to include in the hash input.
+        prev_hash: Hash of the previous block.
+        payload: Arbitrary JSON-serialisable payload dict.
+        entry_id: Optional entry UUID.
+        entry_type: Optional entry type string.
+        timestamp_str: Optional canonical ISO timestamp string.
+        secret_key: Optional HMAC key for anti-truncation / rewrite protection.
 
     Returns:
-        Lowercase hex-encoded SHA-256 digest.
+        Lowercase hex-encoded SHA-256 or HMAC-SHA256 digest.
     """
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    raw = (prev_hash + canonical).encode("utf-8")
+    canonical_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    
+    # Envelope includes metadata if present to ensure tamper-evidence on header fields
+    if entry_id is not None and entry_type is not None and timestamp_str is not None:
+        envelope = f"{prev_hash}|{entry_id}|{entry_type}|{timestamp_str}|{canonical_payload}"
+    else:
+        # Backward compatibility for pure payload hashing
+        envelope = prev_hash + canonical_payload
+
+    raw = envelope.encode("utf-8")
+    key = secret_key or os.getenv("AUDIT_HMAC_KEY")
+
+    if key:
+        return hmac.new(key.encode("utf-8"), raw, hashlib.sha256).hexdigest()
     return hashlib.sha256(raw).hexdigest()
 
 
 class AuditLog:
-    """Append-only, tamper-evident audit log backed by a JSONL file.
+    """Append-only, tamper-evident audit log backed by a JSONL file."""
 
-    Args:
-        log_path: Path to the ``.jsonl`` file.  Created automatically
-            (including parent directories) on first append.
-    """
-
-    def __init__(self, log_path: str = DEFAULT_LOG_PATH) -> None:
+    def __init__(
+        self,
+        log_path: str = DEFAULT_LOG_PATH,
+        secret_key: Optional[str] = None,
+    ) -> None:
         self._path = Path(log_path)
+        self._secret_key = secret_key or os.getenv("AUDIT_HMAC_KEY")
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def append(self, entry_type: str, payload: dict[str, Any]) -> AuditEntry:
-        """Append a new entry to the log and return it.
-
-        The ``entry_hash`` and ``prev_hash`` fields are computed here.
-        The entry is serialized as a single JSON line and appended to
-        the JSONL file.
-
-        Args:
-            entry_type: Semantic label for this event.
-            payload: Arbitrary data to record (must be JSON-serialisable).
-
-        Returns:
-            The completed :class:`AuditEntry` including both hashes.
-        """
+        """Append a new entry to the log and return it."""
         prev_hash = self._last_hash()
+        now_utc = datetime.now(timezone.utc)
+        ts_str = now_utc.isoformat()
+
         entry = AuditEntry(
+            entry_id=str(uuid.uuid4()),
+            timestamp=now_utc,
             entry_type=entry_type,
             payload=payload,
             prev_hash=prev_hash,
         )
-        entry.entry_hash = _compute_hash(prev_hash, payload)
+
+        entry.entry_hash = _compute_hash(
+            prev_hash=prev_hash,
+            payload=payload,
+            entry_id=entry.entry_id,
+            entry_type=entry.entry_type,
+            timestamp_str=ts_str,
+            secret_key=self._secret_key,
+        )
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as fh:
@@ -118,28 +132,38 @@ class AuditLog:
     def verify_chain(self) -> Tuple[bool, Optional[int]]:
         """Verify the integrity of the entire hash chain.
 
-        Re-computes every ``entry_hash`` from scratch and compares it
-        to the stored value.  Also verifies that each ``prev_hash``
-        matches the previous entry's ``entry_hash``.
-
-        Returns:
-            A tuple ``(valid, broken_at_index)`` where:
-
-            - ``valid`` is ``True`` iff all entries pass validation.
-            - ``broken_at_index`` is the 0-based index of the first
-              corrupted entry, or ``None`` if the chain is valid.
+        Re-computes every ``entry_hash`` from scratch including header fields
+        and verifies prev_hash linkage.
         """
         entries = self._load_all()
         expected_prev = GENESIS_HASH
 
         for idx, entry in enumerate(entries):
-            # Check prev_hash linkage.
+            # 1. Check prev_hash linkage
             if entry.prev_hash != expected_prev:
                 return False, idx
-            # Recompute and compare entry_hash.
-            expected_hash = _compute_hash(entry.prev_hash, entry.payload)
-            if entry.entry_hash != expected_hash:
+
+            # 2. Check full-envelope entry_hash
+            ts_str = entry.timestamp.isoformat()
+            expected_hash = _compute_hash(
+                prev_hash=entry.prev_hash,
+                payload=entry.payload,
+                entry_id=entry.entry_id,
+                entry_type=entry.entry_type,
+                timestamp_str=ts_str,
+                secret_key=self._secret_key,
+            )
+
+            # Fallback check for older legacy payload-only blocks
+            legacy_hash = _compute_hash(
+                prev_hash=entry.prev_hash,
+                payload=entry.payload,
+                secret_key=self._secret_key,
+            )
+
+            if entry.entry_hash != expected_hash and entry.entry_hash != legacy_hash:
                 return False, idx
+
             expected_prev = entry.entry_hash
 
         return True, None
@@ -153,11 +177,26 @@ class AuditLog:
     # ------------------------------------------------------------------
 
     def _last_hash(self) -> str:
-        """Return the ``entry_hash`` of the last persisted entry."""
-        entries = self._load_all()
-        if not entries:
+        """Return the ``entry_hash`` of the last persisted entry efficiently."""
+        if not self._path.exists() or self._path.stat().st_size == 0:
             return GENESIS_HASH
-        return entries[-1].entry_hash
+
+        try:
+            with self._path.open("rb") as f:
+                f.seek(max(0, self._path.stat().st_size - 8192))
+                lines = f.read().decode("utf-8", errors="replace").splitlines()
+                for line in reversed(lines):
+                    line = line.strip()
+                    if line:
+                        entry = AuditEntry.model_validate_json(line)
+                        return entry.entry_hash
+        except Exception:
+            # Fallback to full load if seek fails
+            entries = self._load_all()
+            if entries:
+                return entries[-1].entry_hash
+
+        return GENESIS_HASH
 
     def _load_all(self) -> list[AuditEntry]:
         """Parse the JSONL file and return a list of :class:`AuditEntry`."""

@@ -1,143 +1,145 @@
-"""Hallucination Checker & Evaluation Runner.
+"""Hallucination Checker & Correctness Evaluation Runner.
 
-Lightweight Python-native replacement for a Promptfoo / LLM-as-judge
-eval suite.  Checks triage reports for structural hallucinations (fake
-MITRE IDs, invalid actions, etc.) and runs a fixed annotated test set.
-
-Usage (CLI)::
-
-    py evals/run_evals.py
+Evaluates triage reports against:
+1. Structural integrity: Valid MITRE technique ID from Knowledge Base, authorized action,
+   non-empty investigation steps, valid confidence range.
+2. Semantic correctness: Ensures the LLM correctly infers the expected technique ID,
+   recommends the appropriate containment action, and meets confidence thresholds.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
+from pathlib import Path
 from typing import Any, Optional
 
 from llm.schemas import AllowedAction, TriageReport
 from guardrails.policy import ALLOWED_ACTIONS
 
-# ---------------------------------------------------------------------------
-# Known MITRE ATT&CK technique IDs (must stay in sync with knowledge_base).
-# ---------------------------------------------------------------------------
-KNOWN_MITRE_IDS: frozenset[str] = frozenset(
-    {
-        "T1190",  # Exploit Public-Facing Application
-        "T1110",  # Brute Force
-        "T1083",  # File and Directory Discovery
-        "T1059",  # Command and Scripting Interpreter
-        "T1046",  # Network Service Discovery
-        "T1078",  # Valid Accounts
-        "T1133",  # External Remote Services
-        # Accept parent technique IDs (T1059.001 etc.)
-        "T1059.001",
-        "T1059.003",
-        "T1059.004",
-        "T1059.006",
-        "T1059.007",
-        "T1110.001",
-        "T1110.003",
-        "T1110.004",
-    }
-)
+
+def _load_known_mitre_ids() -> frozenset[str]:
+    """Derive known MITRE IDs dynamically from the knowledge base."""
+    kb_path = Path(__file__).parent.parent / "llm" / "rag" / "knowledge_base" / "mitre_attack.json"
+    ids = set()
+    if kb_path.exists():
+        try:
+            data = json.loads(kb_path.read_text(encoding="utf-8"))
+            for item in data:
+                mid = item.get("id")
+                if mid:
+                    ids.add(mid)
+                    if "." in mid:
+                        ids.add(mid.split(".")[0])
+        except Exception:
+            pass
+    # Fallback to standard base set if KB not found
+    if not ids:
+        ids = {"T1190", "T1083", "T1110", "T1110.001", "T1059", "T1595.002", "T1078", "T1003"}
+    return frozenset(ids)
+
+
+KNOWN_MITRE_IDS: frozenset[str] = _load_known_mitre_ids()
 
 
 @dataclass
 class HallucinationResult:
-    """Result of a single hallucination check.
-
-    Attributes:
-        passed: True iff no hallucinations were detected.
-        issues: List of human-readable issue descriptions.
-    """
+    """Result of a single evaluation check."""
 
     passed: bool = True
     issues: list[str] = field(default_factory=list)
 
     def flag(self, reason: str) -> None:
-        """Record a hallucination issue and mark the result as failed."""
+        """Record a failure/hallucination issue."""
         self.passed = False
         self.issues.append(reason)
 
 
 class HallucinationChecker:
-    """Inspect :class:`~llm.schemas.TriageReport` objects for hallucinations.
+    """Inspects TriageReports for hallucinations and correctness against ground truth."""
 
-    Checks performed:
-
-    1. MITRE technique ID must be in :data:`KNOWN_MITRE_IDS`.
-    2. ``suggested_action`` must be in the allow-list.
-    3. ``investigation_steps`` must have at least one entry.
-    4. ``confidence_score`` must be in ``[0.0, 1.0]``.
-    """
-
-    def check(self, report: TriageReport) -> HallucinationResult:
-        """Run all hallucination checks on *report*.
-
-        Args:
-            report: Triage report to validate.
-
-        Returns:
-            A :class:`HallucinationResult` describing any issues found.
-        """
+    def check(
+        self,
+        report: TriageReport,
+        expected: Optional[dict[str, Any]] = None,
+    ) -> HallucinationResult:
+        """Run structural and semantic correctness checks on *report*."""
         result = HallucinationResult()
 
-        # 1. MITRE ID
+        # 1. Structural MITRE ID check (must exist in KB)
         mid = report.mitre_technique_id.strip()
         if mid not in KNOWN_MITRE_IDS:
             result.flag(
-                f"Unknown MITRE technique ID '{mid}' "
-                f"(not in knowledge base)."
+                f"Unknown MITRE technique ID '{mid}' (not found in knowledge base)."
             )
 
-        # 2. Action allow-list
+        # 2. Action allow-list check
         if report.suggested_action not in ALLOWED_ACTIONS:
             result.flag(
-                f"Unauthorized action '{report.suggested_action}' "
-                f"(not in allow-list)."
+                f"Unauthorized action '{report.suggested_action}' (not in allow-list)."
             )
 
-        # 3. Investigation steps
+        # 3. Investigation steps check
         if not report.investigation_steps:
             result.flag("investigation_steps list is empty.")
 
-        # 4. Confidence range
+        # 4. Confidence range check
         if not (0.0 <= report.confidence_score <= 1.0):
             result.flag(
                 f"confidence_score {report.confidence_score} out of [0, 1]."
             )
+
+        # 5. Semantic Correctness Checks against ground truth (when expected is provided)
+        if expected and not expected.get("hallucination_detected"):
+            # Check expected technique ID
+            exp_mid = expected.get("mitre_technique_id")
+            if exp_mid:
+                # Match exact or parent technique (e.g. T1110 matches T1110.001)
+                mid_base = mid.split(".")[0]
+                exp_base = exp_mid.split(".")[0]
+                if mid != exp_mid and mid_base != exp_base:
+                    result.flag(
+                        f"Technique mismatch: got '{mid}', expected '{exp_mid}'"
+                    )
+
+            # Check expected containment action
+            exp_act = expected.get("suggested_action")
+            if exp_act and report.suggested_action != exp_act:
+                result.flag(
+                    f"Action mismatch: got '{report.suggested_action}', expected '{exp_act}'"
+                )
+
+            # Check minimum confidence
+            min_conf = expected.get("min_confidence")
+            if min_conf is not None and report.confidence_score < min_conf:
+                result.flag(
+                    f"Confidence {report.confidence_score} below minimum threshold {min_conf}"
+                )
+
+            # Check minimum investigation steps
+            min_steps = expected.get("min_investigation_steps")
+            if min_steps and len(report.investigation_steps) < min_steps:
+                result.flag(
+                    f"Investigation steps count {len(report.investigation_steps)} below minimum {min_steps}"
+                )
 
         return result
 
 
 @dataclass
 class EvalCase:
-    """A single evaluation test case.
-
-    Attributes:
-        case_id: Identifier from ``test_cases.json``.
-        report: The triage report under test.
-        expects_hallucination: True iff the case is expected to fail.
-        description: Human-readable label.
-    """
+    """A single evaluation test case."""
 
     case_id: str
     report: TriageReport
     expects_hallucination: bool
     description: str
+    expected: Optional[dict[str, Any]] = None
 
 
 @dataclass
 class EvalResult:
-    """Aggregated result of an evaluation run.
-
-    Attributes:
-        total: Total number of cases.
-        passed: Number of cases that behaved as expected.
-        hallucination_rate: Fraction of non-hallucination cases that
-            produced at least one hallucination flag.
-        details: Per-case details list.
-    """
+    """Aggregated result of an evaluation run."""
 
     total: int = 0
     passed: int = 0
@@ -151,63 +153,47 @@ class EvalResult:
 
 
 class EvalRunner:
-    """Run a list of :class:`EvalCase` objects and collect metrics.
-
-    Args:
-        checker: :class:`HallucinationChecker` instance to use.
-    """
+    """Run a list of :class:`EvalCase` objects and collect metrics."""
 
     def __init__(self, checker: Optional[HallucinationChecker] = None) -> None:
         self._checker = checker or HallucinationChecker()
 
     def run(self, cases: list[EvalCase]) -> EvalResult:
-        """Execute all *cases* and return aggregated :class:`EvalResult`.
-
-        A case *passes* when:
-
-        - ``expects_hallucination=True`` and at least one hallucination
-          was detected, **or**
-        - ``expects_hallucination=False`` and no hallucinations were
-          detected.
-
-        Args:
-            cases: Evaluation cases to run.
-
-        Returns:
-            :class:`EvalResult` with per-case details and summary metrics.
-        """
-        result = EvalResult(total=len(cases))
-        clean_total = 0
-        clean_hallucinated = 0
+        """Execute all *cases* and return aggregated :class:`EvalResult`."""
+        total = len(cases)
+        passed = 0
+        hallucination_count = 0
+        details: list[dict[str, Any]] = []
 
         for case in cases:
-            hr = self._checker.check(case.report)
-            detected = not hr.passed
+            res = self._checker.check(case.report, expected=case.expected)
 
             if case.expects_hallucination:
-                # We want the checker to flag something.
-                ok = detected
+                case_passed = not res.passed
             else:
-                # We want clean output.
-                ok = not detected
-                clean_total += 1
-                if detected:
-                    clean_hallucinated += 1
+                case_passed = res.passed
+                if not res.passed:
+                    hallucination_count += 1
 
-            if ok:
-                result.passed += 1
+            if case_passed:
+                passed += 1
 
-            result.details.append(
+            details.append(
                 {
                     "case_id": case.case_id,
                     "description": case.description,
-                    "passed": ok,
+                    "passed": case_passed,
                     "expects_hallucination": case.expects_hallucination,
-                    "issues": hr.issues,
+                    "issues": res.issues,
                 }
             )
 
-        result.hallucination_rate = (
-            clean_hallucinated / clean_total if clean_total else 0.0
+        clean_denom = sum(1 for c in cases if not c.expects_hallucination)
+        hrate = hallucination_count / clean_denom if clean_denom else 0.0
+
+        return EvalResult(
+            total=total,
+            passed=passed,
+            hallucination_rate=hrate,
+            details=details,
         )
-        return result

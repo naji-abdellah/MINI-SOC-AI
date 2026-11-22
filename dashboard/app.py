@@ -296,6 +296,25 @@ if page == "Dashboard Overview":
     pending_count = len(pend_df)
     chain_ok = chain["valid"]
 
+    # Dynamic Active Threat Discovery from Live DuckDB Telemetry
+    top_threat_name = "Monitoring Standby (Clean Telemetry)"
+    top_threat_badge = "ALL CLEAR"
+    top_threat_style = "background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);"
+    try:
+        import duckdb
+        con = duckdb.connect(DB_PATH, read_only=True)
+        row = con.execute("SELECT rule_title, UPPER(severity), COUNT(*) FROM alerts GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 1").fetchone()
+        con.close()
+        if row:
+            top_threat_name = f"Active Threat: {row[0]} ({row[2]} incidents)"
+            top_threat_badge = f"{row[1]} SEVERITY"
+            if row[1] == "CRITICAL":
+                top_threat_style = "background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3);"
+            else:
+                top_threat_style = "background:rgba(249,115,22,0.15); color:#fb923c; border:1px solid rgba(249,115,22,0.3);"
+    except Exception:
+        pass
+
     # Top Detail Card (Linear/Cyber style)
     st.markdown(
         f"""
@@ -303,8 +322,8 @@ if page == "Dashboard Overview":
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
-                        <span style="font-size:20px; font-weight:600; color:#f4f4f5; letter-spacing:-0.5px;">Active Campaign: THR-8840</span>
-                        <span style="background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); padding:2px 10px; border-radius:4px; font-size:12px; font-weight:600;">ACTIVE THREAT</span>
+                        <span style="font-size:20px; font-weight:600; color:#f4f4f5; letter-spacing:-0.5px;">{top_threat_name}</span>
+                        <span style="{top_threat_style} padding:2px 10px; border-radius:4px; font-size:12px; font-weight:600;">{top_threat_badge}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:32px; flex-wrap:wrap;">
                         <div>
@@ -671,16 +690,18 @@ elif page == "Analyst Feedback Loop":
     # Real-time Active Learning Retraining Feedback
     if "last_feedback_status" in st.session_state:
         fb_info = st.session_state["last_feedback_status"]
+        base_t = fb_info.get("baseline_threshold", 0.50)
+        cal_t = fb_info.get("threshold", 0.50)
         st.markdown(
             f"""
             <div style="background:#09090b; border:1px solid rgba(249,115,22,0.4); border-radius:8px; padding:16px; margin-bottom:24px; font-family:monospace; font-size:12px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
                 <div style="color:#f97316; font-weight:600; margin-bottom:8px; display:flex; justify-content:space-between;">
                     <span>Active Learning Model Calibration — Pipeline Receipt</span>
-                    <span style="color:#4ade80;">[MODEL WEIGHTS UPDATED]</span>
+                    <span style="color:#4ade80;">[MODEL WEIGHTS CALIBRATED]</span>
                 </div>
                 <div style="color:#e4e4e7; margin-bottom:4px;">&gt; Incident ID: {fb_info['alert_id']} marked as <strong>{'False Positive (Suppressed)' if fb_info['was_fp'] else 'True Positive (Confirmed)'}</strong></div>
-                <div style="color:#a1a1aa; margin-bottom:4px;">&gt; Anomaly decision threshold adjusted: 0.70 &rarr; <span style="color:#f97316; font-weight:600;">{fb_info['threshold']}</span></div>
-                <div style="color:#71717a;">&gt; Expected SOC alert fatigue reduction: <span style="color:#4ade80; font-weight:600;">{fb_info['fp_reduction']}</span></div>
+                <div style="color:#a1a1aa; margin-bottom:4px;">&gt; Anomaly decision threshold adjusted: {base_t:.2f} &rarr; <span style="color:#f97316; font-weight:600;">{cal_t:.3f}</span></div>
+                <div style="color:#71717a;">&gt; Measured validation noise suppression ({fb_info.get('feedback_count', 1)} ground truth labels): <span style="color:#4ade80; font-weight:600;">{fb_info['fp_reduction']}</span></div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -719,12 +740,30 @@ elif page == "Analyst Feedback Loop":
                 comment=comment,
                 db_path=DB_PATH,
             )
-            st.session_state["last_feedback_status"] = {
-                "alert_id": selected_id,
-                "was_fp": is_fp,
-                "threshold": 0.82 if is_fp else 0.72,
-                "fp_reduction": "14.3% noise suppression" if is_fp else "N/A (True Threat Confirmed)",
-            }
+            # Run empirical active learning calibration cycle
+            try:
+                from ml.active_learning import ActiveLearningLoop
+                loop = ActiveLearningLoop(db_path=DB_PATH)
+                metrics = loop.run_active_learning_cycle()
+                reduction_pct = metrics.get("false_positive_reduction_pct", 0.0)
+                reduction_str = f"{reduction_pct:.1f}% noise suppression" if reduction_pct > 0 else "Baseline maintained (True Threat Confirmed)"
+                st.session_state["last_feedback_status"] = {
+                    "alert_id": selected_id,
+                    "was_fp": is_fp,
+                    "baseline_threshold": metrics.get("baseline_threshold", 0.50),
+                    "threshold": metrics.get("calibrated_threshold", 0.50),
+                    "fp_reduction": reduction_str,
+                    "feedback_count": metrics.get("feedback_records_analyzed", 1),
+                }
+            except Exception as e:
+                st.session_state["last_feedback_status"] = {
+                    "alert_id": selected_id,
+                    "was_fp": is_fp,
+                    "baseline_threshold": 0.50,
+                    "threshold": 0.50,
+                    "fp_reduction": f"Recalibration skipped ({e})",
+                    "feedback_count": 1,
+                }
             st.cache_data.clear()
             st.rerun()
 

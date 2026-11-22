@@ -43,7 +43,8 @@ def parse_auth_log(line: str, log_source: str = "auth_log", current_year: Option
         m = match.groupdict()
         ts_str = f"{m['timestamp']} {year}"
         try:
-            dt = date_parser.parse(ts_str).astimezone(timezone.utc)
+            parsed_dt = date_parser.parse(ts_str)
+            dt = parsed_dt.replace(tzinfo=timezone.utc) if parsed_dt.tzinfo is None else parsed_dt.astimezone(timezone.utc)
         except Exception:
             return None
 
@@ -66,7 +67,8 @@ def parse_auth_log(line: str, log_source: str = "auth_log", current_year: Option
         m = match.groupdict()
         ts_str = f"{m['timestamp']} {year}"
         try:
-            dt = date_parser.parse(ts_str).astimezone(timezone.utc)
+            parsed_dt = date_parser.parse(ts_str)
+            dt = parsed_dt.replace(tzinfo=timezone.utc) if parsed_dt.tzinfo is None else parsed_dt.astimezone(timezone.utc)
         except Exception:
             return None
 

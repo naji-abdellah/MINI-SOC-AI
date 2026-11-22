@@ -65,17 +65,21 @@ class DuckDBStore:
         import pandas as pd
         df = pd.DataFrame(rows)
 
+        before = self.count_events()
         self.conn.register("batch_df", df)
         self.conn.execute("""
             INSERT OR IGNORE INTO events
             SELECT * FROM batch_df;
         """)
         self.conn.unregister("batch_df")
-        return len(events)
+        after = self.count_events()
+        return after - before
 
     def count_events(self) -> int:
         """Return total event count."""
-        res = self.conn.execute("SELECT count(*) FROM events;").fetchone()
+        cur = self.conn.cursor()
+        res = cur.execute("SELECT count(*) FROM events;").fetchone()
+        cur.close()
         return res[0] if res else 0
 
     def query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:

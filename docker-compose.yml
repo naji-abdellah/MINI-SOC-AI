@@ -39,7 +39,7 @@ services:
   # DVWA (Damn Vulnerable Web Application): Classic PHP/MySQL vulnerable web app
   # Ideal for brute force (Hydra), SQL injection (sqlmap), command injection, file inclusion.
   dvwa:
-    image: vulnerables/web-dvwa:latest
+    image: vulnerables/web-dvwa:1.0.7
     container_name: minisoc-dvwa
     ports:
       - "8080:80"

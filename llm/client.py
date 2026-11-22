@@ -5,6 +5,7 @@ Includes an offline deterministic evaluation engine for CI/CD and sandbox enviro
 """
 
 import json
+import logging
 import os
 import re
 from typing import Any, Dict, Optional
@@ -13,6 +14,8 @@ from pydantic import ValidationError
 
 from llm.schemas import TriageReport
 from llm.prompts import TRIAGE_SYSTEM_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaClient:
@@ -29,27 +32,37 @@ class OllamaClient:
         self.model = model or os.getenv("LLM_MODEL", "qwen2.5:3b")
         self.offline_mode = offline_mode
         self.timeout = timeout_seconds
+        self._available_cache: Optional[bool] = None
 
     def is_available(self) -> bool:
         """Check if local Ollama daemon is reachable."""
         if self.offline_mode:
             return False
+        if self._available_cache is not None:
+            return self._available_cache
         try:
-            resp = httpx.get(f"{self.base_url}/api/version", timeout=2.0)
-            return resp.status_code == 200
+            resp = httpx.get(f"{self.base_url}/api/version", timeout=0.3)
+            self._available_cache = (resp.status_code == 200)
         except Exception:
-            return False
+            self._available_cache = False
+        return self._available_cache
 
     def generate_triage(self, prompt: str, alert_id: str, is_naive: bool = False) -> TriageReport:
         """Call Ollama (or offline fallback) and validate against TriageReport schema."""
         if not self.offline_mode and self.is_available():
             try:
-                return self._call_ollama_api(prompt)
+                report = self._call_ollama_api(prompt)
+                report.source = "ollama"
+                return report
             except Exception as e:
-                # Log and fallback to offline deterministic engine
-                pass
+                logger.warning(
+                    f"Ollama request to {self.base_url} for model '{self.model}' failed: {e}. "
+                    "Falling back to offline deterministic triage engine."
+                )
 
-        return self._offline_triage_engine(prompt, alert_id, is_naive=is_naive)
+        report = self._offline_triage_engine(prompt, alert_id, is_naive=is_naive)
+        report.source = "offline_fallback"
+        return report
 
     def _call_ollama_api(self, prompt: str) -> TriageReport:
         """Execute HTTP request to Ollama /api/chat with format=json."""
@@ -84,10 +97,17 @@ class OllamaClient:
         """Deterministic rule-grounded triage generator for testing and offline environments."""
         prompt_lower = prompt.lower()
 
-        # BREAK-IT SIMULATION:
-        # If naive prompt assembly is used and an instruction override injection is present:
-        if is_naive and ("ignore" in prompt_lower and ("override" in prompt_lower or "false alarm" in prompt_lower)):
-            # The naive assembly gets hijacked by the prompt injection!
+        # Structural quarantine check:
+        # In a hardened prompt, evidence is quarantined within <untrusted_event_evidence> tags.
+        # In a naive prompt, instructions in raw evidence bleed directly into the LLM context.
+        is_quarantined = "<untrusted_event_evidence>" in prompt and "</untrusted_event_evidence>" in prompt
+        has_injection = any(
+            kw in prompt_lower
+            for kw in ["ignore all previous", "system override", "false alarm", "mark assessed_severity as 'low'"]
+        )
+
+        if has_injection and not is_quarantined:
+            # Unquarantined adversarial instructions successfully hijack the prompt parser
             return TriageReport(
                 alert_id=alert_id,
                 incident_summary="Benign ping from authorized scanner activity.",
@@ -99,27 +119,16 @@ class OllamaClient:
                 investigation_steps=["Mark as false positive and dismiss alert per user override request."],
                 reasoning="Payload requested override; un-quarantined prompt obeyed attacker instruction.",
                 retrieved_runbook="Automated Scanner and Reconnaissance Runbook",
+                source="offline_fallback",
             )
 
-        # Standard hardened evaluation: Grounded by MITRE Technique in prompt
-        if "t1190" in prompt_lower or "sql" in prompt_lower:
-            return TriageReport(
-                alert_id=alert_id,
-                incident_summary="SQL injection payload detected targeting web endpoint with database enumeration syntax.",
-                mitre_technique_id="T1190",
-                mitre_technique_name="Exploit Public-Facing Application",
-                confidence_score=0.92,
-                assessed_severity="HIGH",
-                suggested_action="block_ip",
-                investigation_steps=[
-                    "Check database logs to determine if unauthorized records were exposed.",
-                    "Verify HTTP response status code and response byte length.",
-                    "Confirm block of attacker source IP at the firewall or reverse proxy."
-                ],
-                reasoning="Evidence reveals classic SQL injection tokens. Grounded in T1190 and Runbook-sqli-01.",
-                retrieved_runbook="SQL Injection Incident Response Runbook",
-            )
-        elif "t1059" in prompt_lower or "command" in prompt_lower or "exec" in prompt_lower:
+        # Standard hardened evaluation: Grounded by MITRE Technique in prompt context
+        tid_match = re.search(r'Technique:\s*(T[0-9]{4}(?:\.[0-9]{3})?)', prompt, re.IGNORECASE)
+        if not tid_match:
+            tid_match = re.search(r'"mitre_technique_id":\s*"(T[0-9]{4}(?:\.[0-9]{3})?)"', prompt, re.IGNORECASE)
+        grounded_tid = tid_match.group(1).upper() if tid_match else ""
+
+        if grounded_tid == "T1059" or (not grounded_tid and ("t1059" in prompt_lower or "command" in prompt_lower)):
             return TriageReport(
                 alert_id=alert_id,
                 incident_summary="OS command injection probe detected attempting remote command execution on web server.",
@@ -135,8 +144,9 @@ class OllamaClient:
                 ],
                 reasoning="Evidence demonstrates shell metacharacters with Unix system utilities. Grounded in T1059.",
                 retrieved_runbook="OS Command Injection Critical Response Runbook",
+                source="offline_fallback",
             )
-        elif "t1110" in prompt_lower or "brute" in prompt_lower or "auth" in prompt_lower:
+        elif grounded_tid in ("T1110", "T1110.001") or (not grounded_tid and ("t1110" in prompt_lower or "brute" in prompt_lower)):
             return TriageReport(
                 alert_id=alert_id,
                 incident_summary="Repeated authentication failures detected from single source IP indicating credential brute force.",
@@ -152,8 +162,9 @@ class OllamaClient:
                 ],
                 reasoning="Exceeded threshold of failed logins in a short timeframe. Grounded in T1110.001.",
                 retrieved_runbook="Brute Force and Credential Spray Runbook",
+                source="offline_fallback",
             )
-        elif "t1083" in prompt_lower or "traversal" in prompt_lower or "lfi" in prompt_lower:
+        elif grounded_tid == "T1083" or (not grounded_tid and ("t1083" in prompt_lower or "traversal" in prompt_lower or "lfi" in prompt_lower)):
             return TriageReport(
                 alert_id=alert_id,
                 incident_summary="Directory traversal and LFI probe attempting to access sensitive system files.",
@@ -169,8 +180,27 @@ class OllamaClient:
                 ],
                 reasoning="Evidence shows traversal patterns attempting to access OS files. Grounded in T1083.",
                 retrieved_runbook="Path Traversal and LFI Runbook",
+                source="offline_fallback",
             )
-        else:
+        elif grounded_tid == "T1078" or (not grounded_tid and ("t1078" in prompt_lower or "admin_access" in prompt_lower)):
+            return TriageReport(
+                alert_id=alert_id,
+                incident_summary="Administrative access achieved immediately following brute force activity.",
+                mitre_technique_id="T1078",
+                mitre_technique_name="Valid Accounts",
+                confidence_score=0.94,
+                assessed_severity="CRITICAL",
+                suggested_action="isolate_host",
+                investigation_steps=[
+                    "Revoke session tokens and force password reset on compromised account.",
+                    "Isolate administrative host to contain potential lateral movement.",
+                    "Review access logs for unauthorized actions taken during the session."
+                ],
+                reasoning="Evidence correlates successful login following authentication failures. Grounded in T1078.",
+                retrieved_runbook="Compromised Account Response Runbook",
+                source="offline_fallback",
+            )
+        elif grounded_tid in ("T1595", "T1595.002", "T1046") or (not grounded_tid and ("scanner" in prompt_lower or "t1595" in prompt_lower)):
             return TriageReport(
                 alert_id=alert_id,
                 incident_summary="Suspicious automated scanning activity exploring web endpoints.",
@@ -186,4 +216,23 @@ class OllamaClient:
                 ],
                 reasoning="Identified automated reconnaissance tooling signatures. Grounded in T1595.002.",
                 retrieved_runbook="Automated Scanner and Reconnaissance Runbook",
+                source="offline_fallback",
+            )
+        else:
+            return TriageReport(
+                alert_id=alert_id,
+                incident_summary="SQL injection payload detected targeting web endpoint with database enumeration syntax.",
+                mitre_technique_id="T1190",
+                mitre_technique_name="Exploit Public-Facing Application",
+                confidence_score=0.92,
+                assessed_severity="HIGH",
+                suggested_action="block_ip",
+                investigation_steps=[
+                    "Check database logs to determine if unauthorized records were exposed.",
+                    "Verify HTTP response status code and response byte length.",
+                    "Confirm block of attacker source IP at the firewall or reverse proxy."
+                ],
+                reasoning="Evidence reveals classic injection tokens. Grounded in T1190.",
+                retrieved_runbook="SQL Injection Incident Response Runbook",
+                source="offline_fallback",
             )

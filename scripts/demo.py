@@ -119,7 +119,10 @@ def run_pipeline(
         alert_dict = {
             "alert_id": alert.alert_id,
             "rule_id": alert.rule_id,
+            "rule_title": alert.rule_title,
             "severity": alert.severity.value.upper(),
+            "source_ip": alert.source_ip,
+            "target_user": alert.target_user,
             "description": alert.rule_title,
             "mitre_technique_id": alert.mitre_technique_id,
             "evidence": alert.evidence,

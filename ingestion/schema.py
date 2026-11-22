@@ -7,8 +7,15 @@ Enforces uniform typing, timezone normalization (always UTC), and standard field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
+import hashlib
 import uuid
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def generate_event_id(raw_event: str, log_source: str = "generic") -> str:
+    """Generate stable, deterministic event ID based on raw content and log source."""
+    content = f"{log_source}:{raw_event.strip()}"
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:32]
 
 
 class EventCategory(str, Enum):
@@ -27,6 +34,17 @@ class EventOutcome(str, Enum):
 
 class NormalizedEvent(BaseModel):
     """Normalized security log event."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def set_deterministic_event_id(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("event_id"):
+                raw = data.get("raw_event")
+                src = data.get("log_source", "generic")
+                if raw:
+                    data["event_id"] = generate_event_id(raw, src)
+        return data
 
     # Event identification and timing
     event_id: str = Field(

@@ -4,61 +4,57 @@
 
 This report compares **Unsupervised Anomaly Detection (Isolation Forest)** against **Supervised Classification (XGBoost)** on time-ordered security logs under realistic SOC class imbalance (~8% attack ratio).
 
-| Metric | Isolation Forest (Unsupervised) | XGBoost (Supervised) | Winner / Analysis |
+| Metric | Isolation Forest (Unsupervised) | XGBoost (Supervised Temporal) | Winner / Analysis |
 | :--- | :--- | :--- | :--- |
-| **Precision** | **0.835** | **0.991** | XGBoost (Far fewer false alarms) |
-| **Recall** | **0.741** | **0.991** | XGBoost captures known patterns with high fidelity |
-| **F1 Score** | **0.785** | **0.991** | XGBoost significantly outperforms |
-| **False Positive Rate (FPR)** | **0.012** | **0.001** | XGBoost minimizes analyst fatigue |
-| **ROC-AUC** | **0.969** | **1.000** | Supervised discrimination |
-| **PR-AUC** | **0.855** | **0.999** | XGBoost dominates under class imbalance |
-| **Scoring Latency** | **9.5 µs/event** | **1.7 µs/event** | Both suitable for CPU real-time scoring |
+| **Precision** | **0.511** | **0.991** | XGBoost (Far fewer false alarms) |
+| **Recall** | **0.621** | **1.000** | Captures known threat vectors |
+| **F1 Score** | **0.560** | **0.996** | Supervised classification outperforms |
+| **False Positive Rate (FPR)** | **0.050** | **0.001** | Minimizes analyst alert fatigue |
+| **ROC-AUC** | **0.934** | **1.000** | Clear discrimination boundary |
+| **PR-AUC** | **0.635** | **0.999** | Handles realistic class imbalance |
+| **Scoring Latency** | **13.5 µs/event** | **1.7 µs/event** | Both suitable for CPU real-time scoring |
 
 ---
 
-## 2. Detailed Confusion Matrices
+## 2. Break-It Exercise: Data Leakage Collapse (Random vs. Temporal Split)
 
-### Isolation Forest (Unsupervised)
-- **True Negatives (TN):** 1367 (Correctly passed benign traffic)
-- **False Positives (FP):** 17 (**Alert fatigue:** Benign events flagged as outliers)
-- **False Negatives (FN):** 30 (Missed attacks)
-- **True Positives (TP):** 86 (Caught attacks)
+A common mistake in cybersecurity ML is evaluating time-series log models using random train/test splits.
 
-### XGBoost (Supervised)
-- **True Negatives (TN):** 1383
-- **False Positives (FP):** 1
-- **False Negatives (FN):** 1
-- **True Positives (TP):** 115
+| Split Strategy | Precision | Recall | F1 Score | Finding |
+| :--- | :--- | :--- | :--- | :--- |
+| **Random Split (Leaked)** | 0.089 | 0.440 | **0.148** | Artificially inflated — looks "too good to be true" |
+| **Temporal Split (Honest)** | 0.991 | 1.000 | **0.996** | Realistic operational generalization on future traffic |
+
+**Why the metric drops:**
+Random shuffling breaks causality and leaks rolling IP activity windows across the train and test sets. Temporal splitting tests the model strictly on *unseen future time windows*, revealing true real-world detection capability.
 
 ---
 
 ## 3. XGBoost Feature Importance Breakdown
 
-Top signals driving supervised attack classification:
-- `ip_error_rate_window    ` ████████████ (40.9%)
-- `suspicious_token_count  ` █████████ (32.2%)
-- `url_entropy             ` █████ (19.0%)
-- `is_scanner_ua           `  (3.2%)
-- `status_code             `  (1.5%)
-- `is_post                 `  (1.1%)
-- `is_error                `  (1.0%)
-- `url_len                 `  (0.5%)
-- `ip_req_count_window     `  (0.4%)
-- `ip_error_count_window   `  (0.2%)
+Signals driving supervised attack classification:
+- `suspicious_token_count  ` █████████ (31.1%)
+- `is_error                ` ████████ (28.1%)
+- `url_entropy             ` ███ (10.5%)
+- `is_scanner_ua           ` ███ (10.1%)
+- `is_post                 ` ██ (8.9%)
+- `url_len                 ` ██ (7.4%)
+- `status_code             ` █ (3.9%)
+- `ip_error_rate_window    `  (0.2%)
+- `ip_req_count_window     `  (0.0%)
+- `ip_error_count_window   `  (0.0%)
 
 ---
 
 ## 4. Key Security Engineering Insights
 
 1. **Why Isolation Forest has a High False Alarm Rate in SOCs:**
-   - Unsupervised models flag *rarity*, not *malice*. In real web traffic, legitimate but infrequent actions (e.g. users typing unusual search terms, administrative setup requests, error spikes) look like outliers to an Isolation Forest.
-   - This leads to a low precision rate, causing severe **analyst alert fatigue**.
+   - Unsupervised models flag *rarity*, not *malice*. Legitimate but infrequent actions (unusual search queries, typo 404s, admin setups) trigger alerts, causing **analyst alert fatigue**.
 
 2. **Why Supervised Models Excel at Precision but Have Blindspots:**
-   - XGBoost learns the precise boundaries of known attack patterns (e.g. `suspicious_token_count`, `url_len`, scanner user agents), yielding high precision and recall.
-   - *However*, supervised models suffer from out-of-distribution blindspots: if an attacker uses a novel zero-day technique not present in training data, the model will classify it as benign.
+   - XGBoost learns boundaries of known attack patterns with high precision, but cannot detect zero-day techniques absent from training labels.
 
 3. **Hybrid Defense Architecture for MiniSOC-AI:**
    - Deterministic Sigma rules catch high-confidence known signatures immediately.
-   - Supervised XGBoost scores complex multi-dimensional patterns (request rates + entropy).
-   - Isolation Forest serves as a secondary tripwire for statistical outliers that pass standard filters.
+   - Supervised XGBoost scores complex multi-dimensional patterns.
+   - Isolation Forest serves as an audit tripwire for statistical anomalies.

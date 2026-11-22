@@ -1,4 +1,4 @@
-# MiniSOC-AI 🛡️🤖
+# MiniSOC-AI
 
 > **A Lightweight, Fully On-Premise, AI-Assisted SOC Pipeline Built for Modest Hardware (8 GB RAM, No GPU, Zero Cloud Budget).**
 
@@ -6,17 +6,17 @@ MiniSOC-AI is an end-to-end security operations and automated triage platform de
 
 ---
 
-## 🎯 The Core Thesis
+## The Core Thesis
 
 Most commercial "AI-driven SOC" solutions rely on expensive cloud platforms (e.g., Microsoft Sentinel + Azure OpenAI) and treat LLM outputs as infallible black boxes.
 
 **MiniSOC-AI proves the alternative:**
 1. A complete SIEM + detection + triage workflow can run **100% locally on an 8 GB RAM laptop (Intel i5 10th Gen, CPU-only)**.
-2. AI components must be **measured** (precision/recall on labeled datasets, hallucination rates with Promptfoo), **guarded** (strict schema validation + action allow-lists + human approval), and **audited** (tamper-evident SHA-256 hash chains).
+2. AI components must be **measured** (precision/recall on temporal splits, hallucination rates with dynamic semantic checks), **guarded** (strict schema validation + deterministic policy floors + action allow-lists + human approval), and **audited** (tamper-evident SHA-256 / HMAC hash chains).
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
  Vulnerable Apps (Docker)  ──►  Raw Logs (Web, Auth, System)
@@ -38,7 +38,7 @@ Most commercial "AI-driven SOC" solutions rely on expensive cloud platforms (e.g
                  LLM Triage (Ollama 3B + RAG over MITRE & Runbooks)
                                         │
                                         ▼
-                    Guardrails: Schema Validation + Allow-List
+                    Guardrails: Schema Validation + Policy Floors
                                         │
                                         ▼
                           Human-in-the-Loop Approval
@@ -46,12 +46,12 @@ Most commercial "AI-driven SOC" solutions rely on expensive cloud platforms (e.g
                                         ▼
              Cryptographic Audit Log (SHA-256 Chain) + Streamlit UI
                                         │
-                      CI/CD: Tests, Rule Checks, LLM Evals
+                      CI/CD: Tests, Rule Checks, Python Evals
 ```
 
 ---
 
-## ⚡ Tech Stack & Hardware Constraints
+## Tech Stack & Hardware Constraints
 
 - **Hardware Target:** 8 GB RAM, Intel Core i5 10th Gen (4 cores / 8 threads), No GPU.
 - **Operating Environment:** Windows 10/11 with WSL2 (memory capped at 5 GB via `.wslconfig`).
@@ -59,13 +59,13 @@ Most commercial "AI-driven SOC" solutions rely on expensive cloud platforms (e.g
 - **Storage:** [DuckDB](https://duckdb.org/) (vectorized, zero-daemon in-process analytical engine).
 - **Vulnerable Targets:** OWASP Juice Shop, DVWA (running in containerized profiles).
 - **Detection & ML:** Sigma-style rules, scikit-learn (Isolation Forest), XGBoost.
-- **Local AI & Embeddings:** [Ollama](https://ollama.com/) running quantized 3B models (`qwen2.5:3b`, `llama3.2:3b`), local vector retrieval (Chroma / FAISS).
-- **Evaluation & Guardrails:** [Promptfoo](https://www.promptfoo.dev/), Pydantic, pytest.
+- **Local AI & Embeddings:** [Ollama](https://ollama.com/) running quantized 3B models (`qwen2.5:3b`, `llama3.2:3b`), grounded MITRE & runbook retrieval.
+- **Evaluation & Guardrails:** Python-native Evaluation Suite, Pydantic, pytest.
 - **Analyst UI:** Streamlit.
 
 ---
 
-## 📂 Repository Layout
+## Repository Layout
 
 ```
 minisoc-ai/
@@ -76,16 +76,17 @@ minisoc-ai/
 ├── requirements.txt        # Python dependencies
 ├── docs/
 │   ├── architecture.md     # Detailed architecture & data flow diagrams
+│   ├── ml-evaluation-report.md # ML benchmark & data leakage break-it report
 │   └── learning-notes.md   # Reflective notes following the 5-step learning method
-├── ingestion/              # Parsers, normalization, DuckDB loader
+├── ingestion/              # Parsers, normalization, DuckDB loader with deterministic event IDs
 ├── detections/             # Sigma-style rules & unit test fixtures
 │   ├── rules/              # Rule definitions mapped to MITRE ATT&CK
 │   └── tests/              # Positive & negative detection tests
-├── ml/                     # Feature engineering, Isolation Forest vs XGBoost
-├── llm/                    # Prompts, RAG retrieval, Ollama integration, schemas
-├── guardrails/             # Schema validation, action allow-list, audit hash chain
-├── evals/                  # Promptfoo test suites, hallucination benchmarks
-├── dashboard/              # Streamlit analyst dashboard
+├── ml/                     # Feature engineering, Isolation Forest vs XGBoost, active learning
+├── llm/                    # Prompts, RAG retrieval, Ollama integration, schemas, fallback logger
+├── guardrails/             # Schema validation, policy floors, approval gate, HMAC audit hash chain
+├── evals/                  # Python-native eval suite, dynamic MITRE semantic checks, test cases
+├── dashboard/              # Streamlit analyst dashboard with real-time active learning metrics
 ├── data/                   # Small samples only (bulk/raw data git-ignored)
 │   ├── raw/
 │   ├── processed/
@@ -95,37 +96,37 @@ minisoc-ai/
 
 ---
 
-## 🚦 Milestones & Progress
+## Milestones & Progress
 
 - [x] **Milestone 0: Environment & Repo Setup**
   - Git repository structure, strict `.gitignore`, `.wslconfig.example`, resource-capped `docker-compose.yml`, architecture docs, learning journal.
 - [x] **Milestone 1: Logs & Normalization (SIEM Fundamentals)**
-  - Schema normalization to ECS/OCSF standard; Apache, Docker JSON, SSH syslog parsers; defensive fallback; DuckDB analytical event store and CLI; break-it tests for out-of-order and hostile logs.
+  - Schema normalization to ECS/OCSF standard; Apache, Docker JSON, SSH syslog parsers with naive UTC preservation; DuckDB analytical event store with deterministic SHA-256 event ID deduplication; break-it tests for out-of-order and hostile logs.
 - [x] **Milestone 2: Detection Engineering (Rules & MITRE ATT&CK)**
-  - 10 Sigma-style rules mapped to MITRE tactics & techniques; vectorized DuckDB detection engine; automated positive/negative test fixtures; evasion break-it tests defeating URL-encoding and SQL comment obfuscation.
-- [x] **Milestone 3: ML-Based Detection**
-  - Feature engineering pipeline (entropy, lexical, rolling IP rates); Isolation Forest vs. XGBoost comparative evaluation on time-series splits; comprehensive evaluation report; break-it test demonstrating metrics collapse under attack distribution shift.
-- [x] **Milestone 4: LLM Triage with RAG**
-  - Local Ollama 3B triage pipeline with MITRE technique & SOC runbook RAG; strict JSON schema output; prompt quarantine defense; break-it test demonstrating indirect prompt injection attack and mitigation.
-- [x] **Milestone 5: Guardrails, Evaluation & Auditability**
-  - Pydantic schema validation, action allow-lists, Promptfoo hallucination benchmarks, SHA-256 hash chain audit log.
+  - 10 Sigma-style rules mapped to MITRE tactics & techniques (`T1110.001`, `T1190`, `T1595.002`, `T1059`); vectorized DuckDB detection engine; automated positive/negative test fixtures; evasion break-it tests defeating URL-encoding and SQL comment obfuscation.
+- [x] **Milestone 3: ML-Based Detection & Active Learning**
+  - Feature engineering pipeline (Shannon entropy, lexical tokens, sliding windows); Isolation Forest vs. XGBoost comparative evaluation; data leakage break-it experiment (Temporal vs. Random split); active learning loop calculating empirical validation noise suppression.
+- [x] **Milestone 4: LLM Triage with Grounded RAG & Fallback Logging**
+  - Local Ollama 3B triage pipeline with MITRE technique & SOC runbook lookup; offline fallback with explicit report tagging; strict JSON schema output; boundary tag quarantine; break-it tests neutralizing direct, multilingual (French), and Base64 prompt injections.
+- [x] **Milestone 5: Guardrails, Dynamic Evals & Cryptographic Audit**
+  - Pydantic schema validation, deterministic policy layer enforcing severity floors and dismissal restrictions, human approval gate with target entities, SHA-256 / HMAC hash chain sealing metadata and payload, 12/12 dynamic semantic evals.
 - [x] **Milestone 6: Dashboard, Feedback Loop & CI**
-  - Streamlit analyst interface, analyst feedback loop, GitHub Actions automated CI with rule validation and hallucination checks.
+  - Cyber-themed Streamlit analyst interface, empirical active learning calibration receipts, live DuckDB threat discovery, GitHub Actions automated CI with rule validation, 81 pytest unit tests, and eval checks.
 
 ---
 
-## 🚀 Running the End-to-End Pipeline
+## Running the End-to-End Pipeline
 
 MiniSOC-AI is designed to run seamlessly on modest hardware. You can run individual stages or execute the entire pipeline with a single command:
 
-### ⚡ 1-Command Automated Demo & Attack Simulator (Recommended)
+### 1-Command Automated Demo & Attack Simulator (Recommended)
 Simulates a multi-stage attack campaign (Reconnaissance, SQLi, SSH Brute Force, OS Command Injection), ingests and enriches with Threat Intelligence, evaluates rules, executes AI triage, records to the cryptographic audit log, and launches the dashboard:
 ```powershell
 # Run automated end-to-end simulation
-python scripts/demo.py
+py scripts/demo.py
 
 # Or run simulation and automatically launch the interactive dashboard:
-python scripts/demo.py --dashboard
+py scripts/demo.py --dashboard
 ```
 
 ---
@@ -134,27 +135,27 @@ python scripts/demo.py --dashboard
 
 #### 1. Ingestion (Normalize Logs to DuckDB with Threat Intel)
 ```powershell
-python -m ingestion.cli --input data/samples/ --db data/minisoc.duckdb
+py -m ingestion.cli --input data/samples/ --db data/minisoc.duckdb
 ```
 
 #### 2. Detection Engine (Rule Evaluation & MITRE Mapping)
 ```powershell
-python -m detections.cli --rules detections/rules/ --db data/minisoc.duckdb --coverage
+py -m detections.cli --rules detections/rules/ --db data/minisoc.duckdb --coverage
 ```
 
-#### 3. ML Anomaly Detection & Distribution Shift Evaluation
+#### 3. ML Anomaly Detection & Data Leakage Break-It Evaluation
 ```powershell
-python -m ml.evaluate
+py -m ml.evaluate
 ```
 
 #### 4. LLM Triage with Grounded RAG & Cryptographic Audit
 ```powershell
-python -m llm.cli --db data/minisoc.duckdb
+py -m llm.cli --db data/minisoc.duckdb
 ```
 
-#### 5. Automated Evaluation & Hallucination Benchmark
+#### 5. Automated Evaluation & Semantic Hallucination Benchmark
 ```powershell
-python evals/run_evals.py
+py evals/run_evals.py
 ```
 
 #### 6. Launch the Interactive SOC Dashboard
@@ -162,9 +163,9 @@ python evals/run_evals.py
 streamlit run dashboard/app.py
 ```
 
-#### 7. Run Full Regression Suite (77 Passing Tests)
+#### 7. Run Full Regression Suite (81 Passing Tests)
 ```powershell
-pytest -v
+py -m pytest -v
 ```
 
 ---
@@ -211,7 +212,7 @@ pytest -v
 
 ---
 
-## 🧠 Learning Method
+## Learning Method
 
 Every milestone is documented in [`docs/learning-notes.md`](docs/learning-notes.md) following a 5-step active retention framework:
 1. **Predict:** Formulate a hypothesis before running commands or models.
@@ -222,6 +223,6 @@ Every milestone is documented in [`docs/learning-notes.md`](docs/learning-notes.
 
 ---
 
-## 👤 Author
+## Author
 **Naji Abdellah** — Engineering Student (Software Engineering & Digitalization), ENSEM Casablanca.
 - Focused on AppSec, AI safety, detection engineering, and resilient systems.

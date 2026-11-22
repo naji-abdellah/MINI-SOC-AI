@@ -104,3 +104,22 @@ class TestAuditLog:
         log.append("approval", {"id": "ap1"})
         entries = log.load_all()
         assert [e.entry_type for e in entries] == ["alert", "triage", "approval"]
+
+    def test_audit_tamper_metadata_detected(self, tmp_path):
+        """Modifying entry_type or timestamp without changing payload must be detected."""
+        log_path = tmp_path / "audit_meta_tamper.jsonl"
+        log = AuditLog(log_path=str(log_path))
+
+        log.append("alert", {"rule": "sqli"})
+        log.append("triage", {"action": "block_ip"})
+
+        # Tamper with the entry_type of block 1
+        lines = log_path.read_text(encoding="utf-8").splitlines()
+        raw = json.loads(lines[1])
+        raw["entry_type"] = "alert"  # Alter category
+        lines[1] = json.dumps(raw)
+        log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        valid, broken_at = log.verify_chain()
+        assert valid is False, "Altered entry_type must invalidate the chain"
+        assert broken_at == 1

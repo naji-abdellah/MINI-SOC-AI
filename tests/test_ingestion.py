@@ -121,6 +121,11 @@ def test_duckdb_store_operations():
     assert inserted == 3
     assert store.count_events() == 3
 
+    # Deduplication test: re-inserting identical events must yield 0 new insertions
+    re_inserted = store.insert_events(events)
+    assert re_inserted == 0, "Re-inserting identical raw logs must be ignored by deduplication"
+    assert store.count_events() == 3, "Event count must remain 3"
+
     # Check top IPs
     top_ips = store.get_top_source_ips(limit=5)
     assert len(top_ips) == 2

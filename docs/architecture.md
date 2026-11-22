@@ -45,7 +45,7 @@ flowchart TD
     subgraph Presentation_CI["User Interface & CI"]
         APPROVAL -.-> DASH["Streamlit Analyst Dashboard"]
         AUDIT -.-> DASH
-        CI["GitHub Actions<br/>(Pytest + Rule Checks + Promptfoo)"]
+        CI["GitHub Actions<br/>(Pytest + Rule Checks + Python Evals)"]
     end
 ```
 
@@ -102,11 +102,11 @@ Because running all components simultaneously would exceed 8 GB of RAM and trigg
   - `reasoning` (brief evidence citing retrieved context)
 
 ### 3.4 Guardrails, Evaluation & Tamper-Evident Audit
-- **Prompt Injection Defense:** Strict separation of untrusted user log payloads from system instructions.
-- **Action Allow-List:** The LLM is never given unbounded shell or network execution authority. It can only propose actions from an approved registry (e.g., `isolate_host`, `block_ip`, `notify_analyst`).
-- **Human-in-the-Loop:** Actions require human approval before persistence.
-- **Hash-Chained Audit Trail:** Every event record contains `prev_hash`, `timestamp`, `event_data`, and `current_hash = SHA256(prev_hash + event_data)`. If any historical log entry or approval decision is altered, the chain breaks.
-- **Automated LLM Evaluation:** Regression testing and hallucination detection powered by **Promptfoo** run in CI/CD.
+- **Prompt Injection Defense:** Strict structural boundary tag encapsulation (`<UNTRUSTED_LOG_PAYLOAD>`), quarantine sanitization, and deterministic policy layer defense-in-depth.
+- **Action Allow-List & Policy Floors:** The LLM cannot execute unbounded commands. Only allowed actions (`block_ip`, `isolate_host`, `quarantine_file`, `notify_analyst`, `dismiss_alert`) are accepted. Furthermore, the deterministic policy layer enforces severity floors (preventing downgrades of HIGH/CRITICAL alerts) and restricts alert dismissal for high-confidence threats.
+- **Human-in-the-Loop:** Containment actions require explicit human analyst approval with clear target entity definitions before SOAR command execution.
+- **Cryptographic Hash-Chained Audit Trail:** Every event record binds `prev_hash`, `entry_id`, `entry_type`, `timestamp`, and `canonical_payload` via SHA-256 (with HMAC support). Modifying or tampering with any metadata or payload breaks the chain mathematically.
+- **Automated LLM Evaluation:** Regression testing, dynamic MITRE correctness validation, and hallucination detection powered by the native Python eval suite (`evals/run_evals.py`).
 
 ### 3.5 Analyst Dashboard
 - Interactive Streamlit application displaying:

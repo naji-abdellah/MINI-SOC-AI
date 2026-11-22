@@ -87,11 +87,16 @@ class TriageCoordinator:
             prompt, alert_id=alert_id, is_naive=use_naive_prompt
         )
 
-        # 4. Policy Enforcement — sanitize unauthorized actions
-        report = self.policy.sanitize_report(report)
+        # 4. Policy Enforcement — sanitize unauthorized actions and enforce severity floor
+        rule_sev = alert_data.get("severity")
+        # In naive prompt mode (used for break-it test demonstration), skip deterministic policy intervention
+        # to observe raw LLM vulnerability, but enforce it in standard/hardened operation.
+        if not use_naive_prompt:
+            report = self.policy.sanitize_report(report, rule_severity=rule_sev)
 
-        # 5. Approval Gate — create pending approval request
-        approval_req = self.approval_gate.submit(report)
+        # 5. Approval Gate — create pending approval request with target IP/entity
+        target = alert_data.get("source_ip") or alert_data.get("target_user")
+        approval_req = self.approval_gate.submit(report, target_entity=target)
 
         # 6. Audit Log — record triage event then approval submission
         self.audit_log.append(

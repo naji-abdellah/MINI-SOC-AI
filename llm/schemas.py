@@ -60,3 +60,7 @@ class TriageReport(BaseModel):
         ...,
         description="Name of the grounded runbook referenced for this assessment.",
     )
+    source: str = Field(
+        default="ollama",
+        description="Inference provider: 'ollama' for live local model, 'offline_fallback' for deterministic engine.",
+    )

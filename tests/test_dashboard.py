@@ -107,11 +107,12 @@ def test_mitre_coverage(test_db):
     df = mitre_coverage(test_db)
     assert not df.empty
     assert "mitre_technique_id" in df.columns
-    # sqli -> T1190, ssh -> T1110, cmdi -> T1059, scanner -> T1046
+    # sqli -> T1190, ssh -> T1110.001, cmdi -> T1059, scanner -> T1595.002
     tech_ids = set(df["mitre_technique_id"])
     assert "T1190" in tech_ids
-    assert "T1110" in tech_ids
+    assert "T1110.001" in tech_ids
     assert "T1059" in tech_ids
+    assert "T1595.002" in tech_ids
 
 
 def test_pending_approvals(test_db):
