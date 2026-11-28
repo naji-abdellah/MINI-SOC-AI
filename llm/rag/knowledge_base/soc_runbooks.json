@@ -15,7 +15,7 @@
   {
     "id": "runbook-auth-02",
     "name": "Brute Force and Credential Spray Runbook",
-    "applicable_techniques": ["T1110.001", "T1078"],
+    "applicable_techniques": ["T1110.001"],
     "severity": "HIGH",
     "immediate_actions": [
       "Identify all usernames targeted by the attacking IP.",
@@ -24,6 +24,19 @@
       "Add the offending IP address to the temporary blocklist (Fail2Ban/firewall)."
     ],
     "containment_options": ["block_ip", "reset_credentials", "notify_analyst"]
+  },
+  {
+    "id": "runbook-account-06",
+    "name": "Compromised Account Response Runbook",
+    "applicable_techniques": ["T1078"],
+    "severity": "CRITICAL",
+    "immediate_actions": [
+      "Immediately revoke all active sessions and tokens for the compromised account.",
+      "Trigger an emergency password reset and enforce Multi-Factor Authentication (MFA).",
+      "Isolate the host or workstation where the administrative session was established to prevent lateral movement.",
+      "Block the offending source IP address at the perimeter firewall and WAF."
+    ],
+    "containment_options": ["isolate_host", "reset_credentials", "block_ip", "notify_analyst"]
   },
   {
     "id": "runbook-lfi-03",

@@ -388,7 +388,58 @@ Four enterprise-grade extensions built:
 ### 3. Key Numbers
 | Metric | Value |
 |--------|-------|
-| New tests added | 9 (Total: 76 passing tests) |
 | Threat intelligence indicators | Curated C2, Tor, and Botnet feeds |
 | Pipeline execution time | Full demo runs in < 6 seconds |
 | Audit chain integrity | 100% verified across all simulated actions |
+
+---
+
+## Defensive Hardening, Cryptographic Audit Integrity & ML Realism
+
+### 1. Predict
+- **Question:** How do subtle data leaks in feature pipelines, threshold windowing in detection SQL, and prompt quarantine escapes affect production SOC reliability?
+- **Hypothesis:**
+  1. Shuffled train/test splits that sort temporal features without index restoration desynchronize feature rows from target labels, causing artificial metric collapse or spurious leakage.
+  2. SQL threshold rules without explicit `time_bucket` grouping will falsely fire on events spread across months rather than within their burst window.
+  3. LLM prompt injection defenses that leave metadata (`source_ip`, `target_user`) unquarantined or fail to sanitize `</untrusted_event_evidence>` tags allow attackers to escape the prompt sandbox.
+  4. Cryptographic hash chains that omit monotonic sequence numbers and external head checkpoints remain vulnerable to tail truncation attacks.
+
+### 2. Build & Break It
+1. **ML Data Leakage Alignment (`ml/features.py` & `ml/evaluate.py`):**
+   - Preserved row indices with `df["_pos"] = range(len(df))` before rolling window sorting and restored order with `df.sort_values("_pos")`.
+   - Exposed genuine data leakage: temporal split achieves F1 0.931 (realistic production generalization), whereas shuffled split with leaked rolling features yields an artificially inflated F1 0.973.
+   - Evaluated Deterministic Sigma Rules vs XGBoost vs Isolation Forest on the same labeled test set: Rules scored Precision 1.000, Recall 0.905, F1 0.950.
+2. **Threshold Rule Time Windows (`detections/engine.py`):**
+   - Replaced unbounded `GROUP BY` with DuckDB `time_bucket(INTERVAL '{window_sec} seconds', timestamp)` grouping.
+   - Added break-it test proving SSH brute force failures spaced 10 minutes apart do not trigger the 300-second threshold rule.
+3. **Prompt Injection Quarantine Boundary Hardening (`llm/prompts.py` & `dashboard/app.py`):**
+   - Added `sanitize_untrusted_content` stripping raw XML boundary closing tags (`</untrusted_event_evidence>`).
+   - Moved attacker-controlled `source_ip` and `target_user` inside the quarantine envelope.
+   - Added strict `ipaddress.ip_address` validation across syslog, web, and JSON log parsers.
+   - Escaped all dynamic commands and labels in Streamlit UI using `html.escape`.
+4. **Offline Test Isolation & Non-Circular Evaluation (`llm/client.py` & `tests/conftest.py`):**
+   - Refactored `_offline_triage_engine` to structurally inspect prompt boundaries rather than relying on boolean mock flags.
+   - Isolated automated unit test execution behind `OLLAMA_OFFLINE_MODE=true` in `conftest.py`, placing live local Ollama runs behind `@pytest.mark.ollama`.
+5. **Audit Log Monotonicity, Checkpointing & File Locking (`guardrails/audit_log.py`):**
+   - Removed legacy payload-only hash fallback.
+   - Added monotonic sequence numbers (`seq: int`) to every block.
+   - Added `.checkpoint` head hash storage to mathematically detect tail truncation attacks.
+   - Added cross-process concurrency protection using `filelock.FileLock`.
+6. **Guardrails & 100% Deterministic Evals (`guardrails/policy.py` & `evals/run_evals.py`):**
+   - Enforced runbook-authorized containment options in `PolicyEnforcer`.
+   - Added missing T1078 runbook (`Compromised Account Response Runbook`) to `soc_runbooks.json`.
+   - Validated runbook names and actions in `HallucinationChecker` and set strict 100% pass rate requirement (`pass_rate >= 1.0`) in `run_evals.py`.
+7. **Dashboard Truthfulness & Connection Management (`guardrails/approval.py` & `dashboard/data.py`):**
+   - Replaced hard-coded fallback IP with truthful "no target" indication.
+   - Prefixed containment receipts with `[SIMULATED]`.
+   - Added duplicate pending request prevention on `alert_id` in `ApprovalGate`.
+   - Implemented context manager (`__enter__`, `__exit__`) and explicit `close()` on DuckDB connections to prevent file locks.
+
+### 3. Key Numbers
+| Metric | Value |
+|--------|-------|
+| Total test suite (collected) | 93 tests (92 offline passing + 1 marked Ollama) |
+| Offline unit test pass rate | 100% (92 / 92) |
+| Semantic eval suite pass rate | 100% (12 / 12 cases passing) |
+| Rule vs ML benchmark | Rules: F1 0.950 | XGBoost (Temporal): F1 0.931 | Leakage (Random): F1 0.973 |
+| Audit chain protection | Full tamper, truncation, and metadata mutation detection |

@@ -7,12 +7,26 @@ Enforces defensive policy constraints on LLM triage outputs:
    preventing indirect prompt injections from suppressing real threats.
 """
 
-from typing import Optional, get_args
+import os
+from typing import Iterable, Optional, get_args
 
 from llm.schemas import AllowedAction, TriageReport
 
-# Derive the allow-list directly from the Literal type
-ALLOWED_ACTIONS: frozenset[str] = frozenset(get_args(AllowedAction))
+# Derive the baseline allow-list directly from the Literal type
+DEFAULT_ALLOWED_ACTIONS: frozenset[str] = frozenset(get_args(AllowedAction))
+
+
+def get_configured_allowed_actions() -> frozenset[str]:
+    """Read ACTION_ALLOWLIST from environment if defined, else default schema actions."""
+    env_actions = os.getenv("ACTION_ALLOWLIST")
+    if env_actions:
+        parsed = [a.strip() for a in env_actions.split(",") if a.strip()]
+        if parsed:
+            return frozenset(parsed)
+    return DEFAULT_ALLOWED_ACTIONS
+
+
+ALLOWED_ACTIONS: frozenset[str] = DEFAULT_ALLOWED_ACTIONS
 
 # Fallback action used when an unauthorized or unsafe action is detected
 SAFE_FALLBACK_ACTION: AllowedAction = "notify_analyst"
@@ -24,8 +38,11 @@ CRITICAL_SEVERITIES: frozenset[str] = frozenset({"HIGH", "CRITICAL"})
 class PolicyEnforcer:
     """Enforces the action allow-list and severity floors on triage reports."""
 
-    def __init__(self) -> None:
-        self.allowed_actions: frozenset[str] = ALLOWED_ACTIONS
+    def __init__(self, allowed_actions: Optional[Iterable[str]] = None) -> None:
+        if allowed_actions is not None:
+            self.allowed_actions = frozenset(allowed_actions)
+        else:
+            self.allowed_actions = get_configured_allowed_actions()
 
     def validate_action(self, action: str) -> bool:
         """Return True if *action* is in the authorized registry."""
@@ -35,11 +52,13 @@ class PolicyEnforcer:
         self,
         report: TriageReport,
         rule_severity: Optional[str] = None,
+        allowed_containment_actions: Optional[list[str]] = None,
     ) -> TriageReport:
         """Return a copy of *report* with policy constraints applied.
 
         Enforces:
         - Action allow-list check
+        - Runbook containment options enforcement (action must be permitted by the retrieved runbook)
         - Severity floor enforcement (cannot downgrade HIGH/CRITICAL to LOW)
         - Safe action check (cannot dismiss_alert on HIGH/CRITICAL)
         """
@@ -55,7 +74,18 @@ class PolicyEnforcer:
                 f"replaced with '{SAFE_FALLBACK_ACTION}'."
             )
 
-        # 2. Rule severity floor and dismissal policy
+        # 2. Runbook containment options check
+        if allowed_containment_actions and data["suggested_action"] not in allowed_containment_actions:
+            original = data["suggested_action"]
+            # Fall back to runbook's first authorized action or safe fallback
+            fallback = allowed_containment_actions[0] if allowed_containment_actions else SAFE_FALLBACK_ACTION
+            data["suggested_action"] = fallback
+            notes.append(
+                f"[POLICY OVERRIDE] Action '{original}' is not permitted by runbook containment options "
+                f"{allowed_containment_actions}; overridden to '{fallback}'."
+            )
+
+        # 3. Rule severity floor and dismissal policy
         if rule_severity:
             norm_rule_sev = rule_severity.upper()
             if norm_rule_sev in CRITICAL_SEVERITIES:

@@ -30,7 +30,8 @@ class OllamaClient:
     ):
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model = model or os.getenv("LLM_MODEL", "qwen2.5:3b")
-        self.offline_mode = offline_mode
+        env_offline = os.getenv("OLLAMA_OFFLINE_MODE", "").lower() in ("true", "1", "yes")
+        self.offline_mode = offline_mode or env_offline
         self.timeout = timeout_seconds
         self._available_cache: Optional[bool] = None
 
@@ -98,16 +99,26 @@ class OllamaClient:
         prompt_lower = prompt.lower()
 
         # Structural quarantine check:
-        # In a hardened prompt, evidence is quarantined within <untrusted_event_evidence> tags.
-        # In a naive prompt, instructions in raw evidence bleed directly into the LLM context.
-        is_quarantined = "<untrusted_event_evidence>" in prompt and "</untrusted_event_evidence>" in prompt
-        has_injection = any(
-            kw in prompt_lower
-            for kw in ["ignore all previous", "system override", "false alarm", "mark assessed_severity as 'low'"]
-        )
+        # An injection is quarantined ONLY IF the prompt defines an <untrusted_event_evidence>...</untrusted_event_evidence>
+        # boundary AND the adversarial instructions do not escape outside that boundary (e.g. via closing tag break-outs
+        # or un-quarantined fields like target_user/source_ip).
+        m = re.search(r"<untrusted_event_evidence>(.*?)</untrusted_event_evidence>", prompt, re.DOTALL)
+        if m:
+            outside_content = (prompt[:m.start()] + prompt[m.end():]).lower()
+        else:
+            outside_content = prompt_lower
 
-        if has_injection and not is_quarantined:
-            # Unquarantined adversarial instructions successfully hijack the prompt parser
+        injection_keywords = [
+            "ignore all previous",
+            "system override",
+            "override du système",
+            "false alarm",
+            "mark assessed_severity as 'low'",
+        ]
+        has_unquarantined_injection = any(kw in outside_content for kw in injection_keywords)
+
+        if has_unquarantined_injection:
+            # Unquarantined adversarial instructions outside boundaries hijack the triage generator
             return TriageReport(
                 alert_id=alert_id,
                 incident_summary="Benign ping from authorized scanner activity.",

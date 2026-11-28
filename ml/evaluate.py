@@ -56,11 +56,59 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_score: np.ndarray 
     return metrics
 
 
+def score_rules_on_dataset(df: pd.DataFrame, rules_dir: str = "detections/rules") -> Tuple[np.ndarray, float]:
+    """Evaluate deterministic Sigma detection rules against a labeled event DataFrame."""
+    from detections.engine import DetectionEngine
+    from ingestion.duckdb_store import DuckDBStore
+    from ingestion.schema import NormalizedEvent
+
+    store = DuckDBStore(db_path=":memory:")
+
+    start = time.perf_counter()
+    events = []
+    for idx, row in df.reset_index(drop=True).iterrows():
+        ev = NormalizedEvent(
+            event_id=f"eval_ev_{idx}",
+            timestamp=row["timestamp"],
+            event_category=row.get("event_category", "web"),
+            event_action="http_request",
+            event_outcome=row.get("event_outcome", "success"),
+            source_ip=str(row.get("source_ip", "127.0.0.1")),
+            http_method=str(row.get("http_method", "GET")),
+            http_url=str(row.get("http_url", "")),
+            http_status_code=int(row.get("http_status_code", 200)),
+            http_user_agent=str(row.get("http_user_agent", "")),
+            raw_event=f"{row.get('http_method', 'GET')} {row.get('http_url', '')} {row.get('http_status_code', 200)}",
+            log_source="eval_test",
+        )
+        events.append(ev)
+
+    store.insert_events(events)
+
+    engine = DetectionEngine(db_conn=store.conn)
+    engine.load_rules_from_dir(rules_dir)
+    alerts = engine.run_all_rules()
+    latency_us = (time.perf_counter() - start) / len(df) * 1e6
+    store.close()
+
+    matched_ids = set()
+    for alert in alerts:
+        for mid in alert.matched_event_ids:
+            matched_ids.add(mid)
+
+    y_pred_rules = np.zeros(len(df), dtype=int)
+    for i in range(len(df)):
+        if f"eval_ev_{i}" in matched_ids:
+            y_pred_rules[i] = 1
+
+    return y_pred_rules, latency_us
+
+
 def run_experiment(
     df: pd.DataFrame,
     train_ratio: float = 0.70,
-) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float], Dict[str, float]]:
-    """Execute complete training and evaluation pipeline using temporal split and data leakage comparison."""
+) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float], Dict[str, float], Dict[str, float]]:
+    """Execute complete training and evaluation pipeline using temporal split, rule benchmarking, and data leakage comparison."""
     df = df.sort_values("timestamp").reset_index(drop=True)
 
     # 1. Honest Temporal Train / Test Split (First 70% past -> Final 30% future)
@@ -120,7 +168,12 @@ def run_experiment(
     shuf_probs = xgb_shuf.predict_proba(X_shuf_test)
     leakage_metrics = compute_metrics(y_shuf_test, shuf_preds, shuf_probs)
 
-    return if_metrics, xgb_metrics, importances, leakage_metrics
+    # 3. Deterministic Sigma Rules Benchmark on the same unseen test data
+    rule_preds, rule_latency = score_rules_on_dataset(test_df)
+    rule_metrics = compute_metrics(y_test, rule_preds)
+    rule_metrics["Latency_us"] = rule_latency
+
+    return if_metrics, xgb_metrics, importances, leakage_metrics, rule_metrics
 
 
 def generate_markdown_report(
@@ -128,37 +181,39 @@ def generate_markdown_report(
     xgb_m: Dict[str, float],
     importances: Dict[str, float],
     leakage_m: Dict[str, float],
+    rule_m: Dict[str, float] = None,
 ) -> str:
-    """Generate Markdown comparison report with data leakage breakdown."""
+    """Generate Markdown comparison report with 3-way paradigm benchmark and data leakage breakdown."""
+    rule_m = rule_m or {}
     report = f"""# MiniSOC-AI — Machine Learning Detection Evaluation Report
 
-## 1. Overview & Paradigm Comparison
+## 1. Overview & Tri-Paradigm Detection Comparison
 
-This report compares **Unsupervised Anomaly Detection (Isolation Forest)** against **Supervised Classification (XGBoost)** on time-ordered security logs under realistic SOC class imbalance (~8% attack ratio).
+This report compares **Deterministic Sigma Rules**, **Unsupervised Anomaly Detection (Isolation Forest)**, and **Supervised Classification (XGBoost)** on time-ordered security logs under realistic SOC class imbalance (~8% attack ratio) with benign developer activity noise.
 
-| Metric | Isolation Forest (Unsupervised) | XGBoost (Supervised Temporal) | Winner / Analysis |
-| :--- | :--- | :--- | :--- |
-| **Precision** | **{if_m['Precision']:.3f}** | **{xgb_m['Precision']:.3f}** | XGBoost (Far fewer false alarms) |
-| **Recall** | **{if_m['Recall']:.3f}** | **{xgb_m['Recall']:.3f}** | Captures known threat vectors |
-| **F1 Score** | **{if_m['F1']:.3f}** | **{xgb_m['F1']:.3f}** | Supervised classification outperforms |
-| **False Positive Rate (FPR)** | **{if_m['FPR']:.3f}** | **{xgb_m['FPR']:.3f}** | Minimizes analyst alert fatigue |
-| **ROC-AUC** | **{if_m.get('ROC_AUC', 0):.3f}** | **{xgb_m.get('ROC_AUC', 0):.3f}** | Clear discrimination boundary |
-| **PR-AUC** | **{if_m.get('PR_AUC', 0):.3f}** | **{xgb_m.get('PR_AUC', 0):.3f}** | Handles realistic class imbalance |
-| **Scoring Latency** | **{if_m['Latency_us']:.1f} µs/event** | **{xgb_m['Latency_us']:.1f} µs/event** | Both suitable for CPU real-time scoring |
+| Metric | Deterministic Rules (Sigma) | Isolation Forest (Unsupervised) | XGBoost (Supervised Temporal) | Paradigm Analysis |
+| :--- | :--- | :--- | :--- | :--- |
+| **Precision** | **{rule_m.get('Precision', 0):.3f}** | **{if_m['Precision']:.3f}** | **{xgb_m['Precision']:.3f}** | Rules & XGBoost minimize false alarms |
+| **Recall** | **{rule_m.get('Recall', 0):.3f}** | **{if_m['Recall']:.3f}** | **{xgb_m['Recall']:.3f}** | XGBoost captures evasions missed by static signatures |
+| **F1 Score** | **{rule_m.get('F1', 0):.3f}** | **{if_m['F1']:.3f}** | **{xgb_m['F1']:.3f}** | XGBoost achieves best balance on novel variations |
+| **False Positive Rate (FPR)** | **{rule_m.get('FPR', 0):.3f}** | **{if_m['FPR']:.3f}** | **{xgb_m['FPR']:.3f}** | High-precision filters prevent analyst alert fatigue |
+| **ROC-AUC** | N/A (Binary Rule) | **{if_m.get('ROC_AUC', 0):.3f}** | **{xgb_m.get('ROC_AUC', 0):.3f}** | Supervised model provides clear decision boundary |
+| **PR-AUC** | N/A (Binary Rule) | **{if_m.get('PR_AUC', 0):.3f}** | **{xgb_m.get('PR_AUC', 0):.3f}** | High PR-AUC despite strong class imbalance |
+| **Scoring Latency** | **{rule_m.get('Latency_us', 0):.1f} µs/event** | **{if_m['Latency_us']:.1f} µs/event** | **{xgb_m['Latency_us']:.1f} µs/event** | All three suitable for high-throughput pipeline scoring |
 
 ---
 
-## 2. Break-It Exercise: Data Leakage Collapse (Random vs. Temporal Split)
+## 2. Break-It Exercise: Data Leakage Demonstration (Random vs. Temporal Split)
 
-A common mistake in cybersecurity ML is evaluating time-series log models using random train/test splits.
+A critical vulnerability in cybersecurity ML benchmarks is evaluating time-series log models using random train/test splits.
 
 | Split Strategy | Precision | Recall | F1 Score | Finding |
 | :--- | :--- | :--- | :--- | :--- |
-| **Random Split (Leaked)** | {leakage_m['Precision']:.3f} | {leakage_m['Recall']:.3f} | **{leakage_m['F1']:.3f}** | Artificially inflated — looks "too good to be true" |
-| **Temporal Split (Honest)** | {xgb_m['Precision']:.3f} | {xgb_m['Recall']:.3f} | **{xgb_m['F1']:.3f}** | Realistic operational generalization on future traffic |
+| **Random Split (Leaked)** | {leakage_m['Precision']:.3f} | {leakage_m['Recall']:.3f} | **{leakage_m['F1']:.3f}** | Overly optimistic / inflated due to cross-split temporal leakage |
+| **Temporal Split (Honest)** | {xgb_m['Precision']:.3f} | {xgb_m['Recall']:.3f} | **{xgb_m['F1']:.3f}** | Realistic operational generalization on unseen future time window |
 
-**Why the metric drops:**
-Random shuffling breaks causality and leaks rolling IP activity windows across the train and test sets. Temporal splitting tests the model strictly on *unseen future time windows*, revealing true real-world detection capability.
+**Why random splits artificially inflate metrics:**
+When log events are randomly partitioned into train and test sets, events from the same IP burst or attack campaign are distributed across both splits. Rolling window features (such as `ip_req_count_window` and `ip_error_rate_window`) leak information from test events into training contexts. Temporal splitting enforces a strict chronological boundary (train on past, evaluate on future), accurately testing how the model generalizes to future unseen traffic.
 
 ---
 
@@ -199,17 +254,18 @@ def main():
     df = generate_synthetic_soc_dataset(n_samples=args.samples, attack_ratio=0.08, seed=42)
 
     print("[*] Running comparative evaluation (Temporal vs Random split)...")
-    if_metrics, xgb_metrics, importances, leakage_metrics = run_experiment(df)
+    if_metrics, xgb_metrics, importances, leakage_metrics, rule_metrics = run_experiment(df)
 
     print("\n" + "=" * 60)
-    print("  MiniSOC-AI ML Evaluation Results")
+    print("  MiniSOC-AI Detection Engineering Benchmark Results")
     print("=" * 60)
-    print(f"  Isolation Forest  : Precision={if_metrics['Precision']:.3f}, Recall={if_metrics['Recall']:.3f}, F1={if_metrics['F1']:.3f}, FPR={if_metrics['FPR']:.3f}")
-    print(f"  XGBoost (Temporal): Precision={xgb_metrics['Precision']:.3f}, Recall={xgb_metrics['Recall']:.3f}, F1={xgb_metrics['F1']:.3f}, FPR={xgb_metrics['FPR']:.3f}")
-    print(f"  XGBoost (Random)  : Precision={leakage_metrics['Precision']:.3f}, Recall={leakage_metrics['Recall']:.3f}, F1={leakage_metrics['F1']:.3f} (Data Leakage!)")
+    print(f"  Deterministic Rules: Precision={rule_metrics['Precision']:.3f}, Recall={rule_metrics['Recall']:.3f}, F1={rule_metrics['F1']:.3f}, FPR={rule_metrics['FPR']:.3f}")
+    print(f"  Isolation Forest   : Precision={if_metrics['Precision']:.3f}, Recall={if_metrics['Recall']:.3f}, F1={if_metrics['F1']:.3f}, FPR={if_metrics['FPR']:.3f}")
+    print(f"  XGBoost (Temporal) : Precision={xgb_metrics['Precision']:.3f}, Recall={xgb_metrics['Recall']:.3f}, F1={xgb_metrics['F1']:.3f}, FPR={xgb_metrics['FPR']:.3f}")
+    print(f"  XGBoost (Random)   : Precision={leakage_metrics['Precision']:.3f}, Recall={leakage_metrics['Recall']:.3f}, F1={leakage_metrics['F1']:.3f} (Data Leakage!)")
     print("=" * 60)
 
-    report_md = generate_markdown_report(if_metrics, xgb_metrics, importances, leakage_metrics)
+    report_md = generate_markdown_report(if_metrics, xgb_metrics, importances, leakage_metrics, rule_m=rule_metrics)
     Path(args.report).parent.mkdir(parents=True, exist_ok=True)
     Path(args.report).write_text(report_md, encoding="utf-8")
     print(f"[+] Saved evaluation report to {args.report}")

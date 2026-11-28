@@ -79,3 +79,17 @@ def test_break_it_malformed_file_ingestion():
     assert store.count_events() == len(events)
 
     store.close()
+
+
+def test_break_it_invalid_source_ip_rejected_or_sanitized():
+    """Verify that lines with unvalidated or malicious source IP patterns are rejected by parsers."""
+    from ingestion.parsers.auth_parser import parse_auth_log
+    from ingestion.parsers.web_parser import parse_combined_web_log
+
+    # SSH log with injected command instead of IP
+    malicious_ssh = "Nov  5 01:30:00 victim sshd[2001]: Failed password for invalid user root from not_an_ip;rm-rf port 38210 ssh2"
+    assert parse_auth_log(malicious_ssh) is None, "Malformed IP in SSH log must be rejected"
+
+    # Web log with command injection in IP field
+    malicious_web = '192.168.1.999;cat/etc/passwd - admin [05/Nov/2026:01:05:00 +0000] "GET / HTTP/1.1" 200 100 "-" "-"'
+    assert parse_combined_web_log(malicious_web) is None, "Malformed IP in web log must be rejected"

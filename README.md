@@ -111,7 +111,7 @@ minisoc-ai/
 - [x] **Milestone 5: Guardrails, Dynamic Evals & Cryptographic Audit**
   - Pydantic schema validation, deterministic policy layer enforcing severity floors and dismissal restrictions, human approval gate with target entities, SHA-256 / HMAC hash chain sealing metadata and payload, 12/12 dynamic semantic evals.
 - [x] **Milestone 6: Dashboard, Feedback Loop & CI**
-  - Cyber-themed Streamlit analyst interface, empirical active learning calibration receipts, live DuckDB threat discovery, GitHub Actions automated CI with rule validation, 81 pytest unit tests, and eval checks.
+  - Cyber-themed Streamlit analyst interface, empirical active learning calibration receipts, live DuckDB threat discovery, GitHub Actions automated CI with rule validation, 92 unit and break-it regression tests, and 100% passing eval checks.
 
 ---
 
@@ -163,7 +163,7 @@ py evals/run_evals.py
 streamlit run dashboard/app.py
 ```
 
-#### 7. Run Full Regression Suite (81 Passing Tests)
+#### 7. Run Full Regression Suite (92 Passing Unit Tests)
 ```powershell
 py -m pytest -v
 ```

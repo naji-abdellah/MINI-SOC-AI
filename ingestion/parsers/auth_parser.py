@@ -1,11 +1,23 @@
 """Authentication and Syslog Parser (SSH, PAM, sudo)."""
 
+import ipaddress
 import re
 from datetime import datetime, timezone
 from typing import Optional
 from dateutil import parser as date_parser
 
 from ingestion.schema import EventCategory, EventOutcome, NormalizedEvent
+
+
+def is_valid_ip(ip_str: str) -> bool:
+    """Validate IPv4 or IPv6 address string."""
+    if not ip_str:
+        return False
+    try:
+        ipaddress.ip_address(ip_str.strip())
+        return True
+    except (ValueError, AttributeError):
+        return False
 
 
 # SSH Failed Login Regex
@@ -41,6 +53,8 @@ def parse_auth_log(line: str, log_source: str = "auth_log", current_year: Option
     match = SSH_FAILED_REGEX.match(clean_line)
     if match:
         m = match.groupdict()
+        if not is_valid_ip(m["ip"]):
+            return None
         ts_str = f"{m['timestamp']} {year}"
         try:
             parsed_dt = date_parser.parse(ts_str)
@@ -65,6 +79,8 @@ def parse_auth_log(line: str, log_source: str = "auth_log", current_year: Option
     match = SSH_ACCEPTED_REGEX.match(clean_line)
     if match:
         m = match.groupdict()
+        if not is_valid_ip(m["ip"]):
+            return None
         ts_str = f"{m['timestamp']} {year}"
         try:
             parsed_dt = date_parser.parse(ts_str)

@@ -123,3 +123,41 @@ class TestAuditLog:
         valid, broken_at = log.verify_chain()
         assert valid is False, "Altered entry_type must invalidate the chain"
         assert broken_at == 1
+
+    def test_audit_tail_truncation_detected(self, tmp_path):
+        """Deleting the last entry must be detected via checkpoint and sequence integrity."""
+        log_path = tmp_path / "audit_truncate.jsonl"
+        log = AuditLog(log_path=str(log_path))
+
+        for i in range(4):
+            log.append("alert", {"seq_num": i})
+
+        valid, broken_at = log.verify_chain()
+        assert valid is True
+
+        # Truncate the file by removing the last entry
+        lines = log_path.read_text(encoding="utf-8").splitlines()
+        log_path.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+
+        # verify_chain with checkpoint must catch tail truncation
+        valid_post, broken_idx = log.verify_chain(check_checkpoint=True)
+        assert valid_post is False, "Tail truncation must be detected"
+
+    def test_legacy_payload_only_hash_rejected(self, tmp_path):
+        """Ensure no legacy fallback allows recomputing payload-only hashes without metadata."""
+        log_path = tmp_path / "audit_legacy.jsonl"
+        log = AuditLog(log_path=str(log_path))
+        log.append("alert", {"rule": "sqli"})
+
+        # Tamper: forge a legacy payload-only hash (prev_hash + canonical_payload)
+        lines = log_path.read_text(encoding="utf-8").splitlines()
+        raw = json.loads(lines[0])
+        import hashlib
+        payload_canon = json.dumps(raw["payload"], sort_keys=True, separators=(",", ":"))
+        legacy_hash = hashlib.sha256((raw["prev_hash"] + payload_canon).encode("utf-8")).hexdigest()
+        raw["entry_hash"] = legacy_hash
+        log_path.write_text(json.dumps(raw) + "\n", encoding="utf-8")
+
+        valid, broken_at = log.verify_chain()
+        assert valid is False, "Legacy payload-only hash must be rejected"
+        assert broken_at == 0

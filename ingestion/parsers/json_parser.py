@@ -1,5 +1,6 @@
 """Structured JSON and Docker Container Log Parser."""
 
+import ipaddress
 import json
 import re
 from datetime import datetime, timezone
@@ -7,6 +8,17 @@ from typing import Any, Dict, Optional
 from dateutil import parser as date_parser
 
 from ingestion.schema import EventCategory, EventOutcome, NormalizedEvent
+
+
+def is_valid_ip(ip_str: Optional[str]) -> bool:
+    """Validate IPv4 or IPv6 address string."""
+    if not ip_str or ip_str == "-":
+        return False
+    try:
+        ipaddress.ip_address(ip_str.strip())
+        return True
+    except (ValueError, AttributeError):
+        return False
 
 
 # Pattern for Juice Shop standard HTTP access log line inside Docker JSON 'log' field:
@@ -54,7 +66,7 @@ def parse_json_log(line: str, log_source: str = "json_log") -> Optional[Normaliz
                 event_category=EventCategory.WEB,
                 event_action="http_request",
                 event_outcome=EventOutcome.SUCCESS if status_code < 400 else EventOutcome.FAILURE,
-                source_ip=ip if ip and ip != "-" else None,
+                source_ip=ip if (ip and is_valid_ip(ip)) else None,
                 http_method=m["method"],
                 http_url=m["url"],
                 http_status_code=status_code,
@@ -114,7 +126,7 @@ def parse_json_log(line: str, log_source: str = "json_log") -> Optional[Normaliz
         event_category=category,
         event_action=data.get("action", "http_request" if method else "json_event"),
         event_outcome=outcome,
-        source_ip=str(ip) if ip else None,
+        source_ip=str(ip).strip() if (ip and is_valid_ip(str(ip))) else None,
         http_method=str(method).upper() if method else None,
         http_url=str(url) if url else None,
         http_status_code=status_code,

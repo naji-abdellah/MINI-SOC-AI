@@ -22,26 +22,39 @@ CRITICAL OPERATIONAL RULES:
 """
 
 
+def sanitize_untrusted_content(text: Any) -> str:
+    """Strip or escape quarantine boundary XML tags to prevent early closing breakout."""
+    if text is None:
+        return ""
+    s = str(text)
+    s = s.replace("</untrusted_event_evidence>", "&lt;/untrusted_event_evidence&gt;")
+    s = s.replace("<untrusted_event_evidence>", "&lt;untrusted_event_evidence&gt;")
+    return s
+
+
 def build_hardened_triage_prompt(alert_data: Dict[str, Any], rag_context: RAGContext) -> str:
     """Construct a prompt with strict boundary quarantine against prompt injection."""
     rag_text = rag_context.to_prompt_context()
 
-    evidence = alert_data.get("evidence", "No evidence snippet provided")
+    evidence = sanitize_untrusted_content(alert_data.get("evidence", "No evidence snippet provided"))
+    source_ip = sanitize_untrusted_content(alert_data.get("source_ip", "unknown"))
+    target_user = sanitize_untrusted_content(alert_data.get("target_user", "N/A"))
 
     return f"""Analyze the following security alert and provide an incident triage assessment in JSON format.
 
 {rag_text}
 
-=== Alert Details ===
+=== Alert Metadata ===
 Alert ID: {alert_data.get('alert_id', 'unknown')}
 Rule Triggered: {alert_data.get('rule_title', 'unknown')}
 Rule Severity: {alert_data.get('severity', 'UNKNOWN')}
-Attacker IP: {alert_data.get('source_ip', 'unknown')}
-Target User: {alert_data.get('target_user', 'N/A')}
 Event Count: {alert_data.get('event_count', 1)}
 
-=== Raw Evidence (UNTRUSTED USER DATA) ===
+=== Untrusted Event Data (ATTACKER-CONTROLLED FORENSIC DATA) ===
 <untrusted_event_evidence>
+Source IP / Attacker IP: {source_ip}
+Target User / Username: {target_user}
+Raw Evidence:
 {evidence}
 </untrusted_event_evidence>
 

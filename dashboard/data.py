@@ -274,28 +274,28 @@ def execute_approval(
     from guardrails.approval import ApprovalGate
     from guardrails.audit_log import AuditLog
 
-    gate = ApprovalGate(db_path=db_path)
-    if action_type == "approve":
-        req = gate.approve(request_id=request_id, analyst=analyst)
-    else:
-        req = gate.reject(request_id=request_id, analyst=analyst, reason=notes)
+    with ApprovalGate(db_path=db_path) as gate:
+        if action_type == "approve":
+            req = gate.approve(request_id=request_id, analyst=analyst)
+        else:
+            req = gate.reject(request_id=request_id, analyst=analyst, reason=notes)
 
     # Simulated SOAR containment response with concrete target parameters:
     containment_cmd = ""
-    target = getattr(req, "target_entity", None) or "198.51.100.25"
+    target = getattr(req, "target_entity", None) or "no target"
     if action_type == "approve":
         if req.suggested_action == "block_ip":
-            containment_cmd = f"SOAR firewall rule applied: iptables -I INPUT 1 -s {target} -j DROP"
+            containment_cmd = f"SIMULATED firewall rule applied: iptables -I INPUT 1 -s {target} -j DROP"
         elif req.suggested_action == "isolate_host":
-            containment_cmd = f"SOAR network isolation applied: networkctl down interface eth0 (target host: {target})"
+            containment_cmd = f"SIMULATED network isolation applied: networkctl down interface eth0 (target host: {target})"
         elif req.suggested_action == "reset_credentials":
-            containment_cmd = f"SOAR IAM triggered: pam_tally2 --user={target} --reset && force_password_reset {target}"
+            containment_cmd = f"SIMULATED IAM triggered: pam_tally2 --user={target} --reset && force_password_reset {target}"
         elif req.suggested_action == "notify_analyst":
-            containment_cmd = f"SOAR alert broadcasted for {target} to SIEM webhook and Slack #soc-incidents"
+            containment_cmd = f"SIMULATED alert broadcasted for {target} to SIEM webhook and Slack #soc-incidents"
         else:
-            containment_cmd = f"SOAR containment command executed for {req.suggested_action} on target {target}"
+            containment_cmd = f"SIMULATED containment command executed for {req.suggested_action} on target {target}"
     else:
-        containment_cmd = f"Approval rejected by {analyst}. Containment for {target} aborted."
+        containment_cmd = f"SIMULATED: Approval rejected by {analyst}. Containment for {target} aborted."
 
     # Cryptographic Audit Log
     audit = AuditLog(log_path=audit_log_path)

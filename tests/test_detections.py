@@ -146,6 +146,29 @@ def test_positive_ssh_brute_force_threshold(test_engine):
     assert ssh_alerts[0].source_ip == "10.10.10.7"
 
 
+def test_ssh_brute_force_threshold_spaced_events_do_not_fire(test_engine):
+    """Verify that failed attempts spaced outside the 300-second window (e.g. 10 minutes apart) do not fire."""
+    engine, conn = test_engine
+    # Insert 3 failed attempts from IP 10.10.10.99 spaced 10 minutes apart
+    timestamps = [
+        "2026-11-05 01:00:00+00",
+        "2026-11-05 01:10:00+00",
+        "2026-11-05 01:20:00+00",
+    ]
+    for i, ts in enumerate(timestamps):
+        conn.execute(f"""
+            INSERT INTO events VALUES (
+                'ev-ssh-spaced-{i}', '{ts}', 'authentication', 'user_login', 'failure',
+                '10.10.10.99', 39000 + {i}, '10.0.0.1', 22, NULL,
+                NULL, NULL, NULL, 'root', 'sshd', 'raw_ssh_fail', ['ssh', 'auth_failure']
+            );
+        """)
+
+    alerts = engine.run_all_rules()
+    ssh_alerts = [a for a in alerts if a.rule_id == "soc-rule-auth-003" and a.source_ip == "10.10.10.99"]
+    assert len(ssh_alerts) == 0, "Spaced authentication failures must not trigger the threshold rule"
+
+
 def test_positive_command_injection_detection(test_engine):
     """Verify OS command injection triggers soc-rule-exec-005."""
     engine, conn = test_engine

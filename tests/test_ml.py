@@ -84,3 +84,13 @@ def test_compute_metrics():
     assert metrics["FN"] == 1
     assert metrics["Precision"] == 2 / 3
     assert metrics["Recall"] == 2 / 3
+
+
+def test_score_rules_on_dataset():
+    """Verify that deterministic detection rules can score a labeled DataFrame."""
+    from ml.evaluate import score_rules_on_dataset
+    df = generate_synthetic_soc_dataset(n_samples=100, attack_ratio=0.20, seed=42)
+    preds, latency = score_rules_on_dataset(df)
+    assert len(preds) == 100
+    assert set(np.unique(preds)).issubset({0, 1})
+    assert latency >= 0.0

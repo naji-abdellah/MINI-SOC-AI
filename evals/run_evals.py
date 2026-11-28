@@ -98,7 +98,7 @@ def main() -> None:
     print(f"Pass rate:          {result.pass_rate:.1%}")
     print(f"Hallucination rate: {result.hallucination_rate:.1%}")
 
-    sys.exit(0 if result.pass_rate >= 0.8 else 1)
+    sys.exit(0 if result.pass_rate >= 1.0 else 1)
 
 
 if __name__ == "__main__":

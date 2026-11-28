@@ -1,46 +1,46 @@
 # MiniSOC-AI — Machine Learning Detection Evaluation Report
 
-## 1. Overview & Paradigm Comparison
+## 1. Overview & Tri-Paradigm Detection Comparison
 
-This report compares **Unsupervised Anomaly Detection (Isolation Forest)** against **Supervised Classification (XGBoost)** on time-ordered security logs under realistic SOC class imbalance (~8% attack ratio).
+This report compares **Deterministic Sigma Rules**, **Unsupervised Anomaly Detection (Isolation Forest)**, and **Supervised Classification (XGBoost)** on time-ordered security logs under realistic SOC class imbalance (~8% attack ratio) with benign developer activity noise.
 
-| Metric | Isolation Forest (Unsupervised) | XGBoost (Supervised Temporal) | Winner / Analysis |
-| :--- | :--- | :--- | :--- |
-| **Precision** | **0.511** | **0.991** | XGBoost (Far fewer false alarms) |
-| **Recall** | **0.621** | **1.000** | Captures known threat vectors |
-| **F1 Score** | **0.560** | **0.996** | Supervised classification outperforms |
-| **False Positive Rate (FPR)** | **0.050** | **0.001** | Minimizes analyst alert fatigue |
-| **ROC-AUC** | **0.934** | **1.000** | Clear discrimination boundary |
-| **PR-AUC** | **0.635** | **0.999** | Handles realistic class imbalance |
-| **Scoring Latency** | **13.5 µs/event** | **1.7 µs/event** | Both suitable for CPU real-time scoring |
+| Metric | Deterministic Rules (Sigma) | Isolation Forest (Unsupervised) | XGBoost (Supervised Temporal) | Paradigm Analysis |
+| :--- | :--- | :--- | :--- | :--- |
+| **Precision** | **1.000** | **0.420** | **0.884** | Rules & XGBoost minimize false alarms |
+| **Recall** | **0.905** | **0.517** | **0.983** | XGBoost captures evasions missed by static signatures |
+| **F1 Score** | **0.950** | **0.463** | **0.931** | XGBoost achieves best balance on novel variations |
+| **False Positive Rate (FPR)** | **0.000** | **0.060** | **0.011** | High-precision filters prevent analyst alert fatigue |
+| **ROC-AUC** | N/A (Binary Rule) | **0.886** | **0.997** | Supervised model provides clear decision boundary |
+| **PR-AUC** | N/A (Binary Rule) | **0.507** | **0.979** | High PR-AUC despite strong class imbalance |
+| **Scoring Latency** | **358.3 µs/event** | **11.9 µs/event** | **1.9 µs/event** | All three suitable for high-throughput pipeline scoring |
 
 ---
 
-## 2. Break-It Exercise: Data Leakage Collapse (Random vs. Temporal Split)
+## 2. Break-It Exercise: Data Leakage Demonstration (Random vs. Temporal Split)
 
-A common mistake in cybersecurity ML is evaluating time-series log models using random train/test splits.
+A critical vulnerability in cybersecurity ML benchmarks is evaluating time-series log models using random train/test splits.
 
 | Split Strategy | Precision | Recall | F1 Score | Finding |
 | :--- | :--- | :--- | :--- | :--- |
-| **Random Split (Leaked)** | 0.089 | 0.440 | **0.148** | Artificially inflated — looks "too good to be true" |
-| **Temporal Split (Honest)** | 0.991 | 1.000 | **0.996** | Realistic operational generalization on future traffic |
+| **Random Split (Leaked)** | 0.954 | 0.992 | **0.973** | Overly optimistic / inflated due to cross-split temporal leakage |
+| **Temporal Split (Honest)** | 0.884 | 0.983 | **0.931** | Realistic operational generalization on unseen future time window |
 
-**Why the metric drops:**
-Random shuffling breaks causality and leaks rolling IP activity windows across the train and test sets. Temporal splitting tests the model strictly on *unseen future time windows*, revealing true real-world detection capability.
+**Why random splits artificially inflate metrics:**
+When log events are randomly partitioned into train and test sets, events from the same IP burst or attack campaign are distributed across both splits. Rolling window features (such as `ip_req_count_window` and `ip_error_rate_window`) leak information from test events into training contexts. Temporal splitting enforces a strict chronological boundary (train on past, evaluate on future), accurately testing how the model generalizes to future unseen traffic.
 
 ---
 
 ## 3. XGBoost Feature Importance Breakdown
 
 Signals driving supervised attack classification:
-- `suspicious_token_count  ` █████████ (31.1%)
-- `is_error                ` ████████ (28.1%)
-- `url_entropy             ` ███ (10.5%)
-- `is_scanner_ua           ` ███ (10.1%)
-- `is_post                 ` ██ (8.9%)
-- `url_len                 ` ██ (7.4%)
-- `status_code             ` █ (3.9%)
-- `ip_error_rate_window    `  (0.2%)
+- `is_error                ` ███████████ (37.8%)
+- `suspicious_token_count  ` ██████ (20.0%)
+- `is_scanner_ua           ` ██ (9.6%)
+- `url_len                 ` ██ (9.5%)
+- `status_code             ` ██ (7.4%)
+- `url_entropy             ` █ (6.6%)
+- `is_post                 ` █ (5.5%)
+- `ip_error_rate_window    ` █ (3.5%)
 - `ip_req_count_window     `  (0.0%)
 - `ip_error_count_window   `  (0.0%)
 

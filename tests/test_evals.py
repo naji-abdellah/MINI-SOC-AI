@@ -27,7 +27,7 @@ def _report(**overrides) -> TriageReport:
         suggested_action="notify_analyst",
         investigation_steps=["Check logs", "Isolate host"],
         reasoning="SQLi detected.",
-        retrieved_runbook="SQLi IR",
+        retrieved_runbook="SQL Injection Incident Response Runbook",
     )
     base.update(overrides)
     return TriageReport.model_construct(**base)
@@ -79,6 +79,23 @@ class TestHallucinationChecker:
         bad = _report(confidence_score=-0.1)
         result = self.checker.check(bad)
         assert result.passed is False
+
+    def test_catches_invalid_runbook_name(self):
+        """A runbook name not in the knowledge base must be flagged."""
+        bad = _report(retrieved_runbook="Fake Imaginary Runbook")
+        result = self.checker.check(bad)
+        assert result.passed is False
+        assert any("Fake Imaginary Runbook" in issue for issue in result.issues)
+
+    def test_catches_action_not_in_runbook_containment_options(self):
+        """Action not permitted by the retrieved runbook must be flagged (e.g. isolate_host on SQLi)."""
+        bad = _report(
+            retrieved_runbook="SQL Injection Incident Response Runbook",
+            suggested_action="isolate_host",
+        )
+        result = self.checker.check(bad)
+        assert result.passed is False
+        assert any("not permitted by runbook" in issue for issue in result.issues)
 
     def test_all_known_mitre_ids_pass(self):
         """Every ID in KNOWN_MITRE_IDS should not trigger the MITRE check."""

@@ -57,6 +57,9 @@ logs/
 *.evtx
 *.zst
 !data/samples/*.log
+data/audit_log.jsonl
+*.checkpoint
+*.lock
 
 # Environment variables & secrets
 .env

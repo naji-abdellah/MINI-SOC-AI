@@ -1,5 +1,6 @@
 """Web Access Log Parser (Apache/Nginx Combined and Common Formats)."""
 
+import ipaddress
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -33,6 +34,12 @@ def parse_combined_web_log(line: str, log_source: str = "web_access") -> Optiona
         return None
 
     data = match.groupdict()
+
+    # Validate IP address
+    try:
+        ipaddress.ip_address(data["ip"].strip())
+    except (ValueError, AttributeError):
+        return None
 
     # Parse timestamp: e.g. "05/Nov/2026:01:23:45 +0000"
     ts_str = data["timestamp"].replace(":", " ", 1)

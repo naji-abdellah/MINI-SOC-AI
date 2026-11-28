@@ -19,7 +19,7 @@ from guardrails.policy import ALLOWED_ACTIONS
 
 
 def _load_known_mitre_ids() -> frozenset[str]:
-    """Derive known MITRE IDs dynamically from the knowledge base."""
+    """Derive known MITRE IDs strictly from the knowledge base without artificial parent IDs."""
     kb_path = Path(__file__).parent.parent / "llm" / "rag" / "knowledge_base" / "mitre_attack.json"
     ids = set()
     if kb_path.exists():
@@ -29,17 +29,42 @@ def _load_known_mitre_ids() -> frozenset[str]:
                 mid = item.get("id")
                 if mid:
                     ids.add(mid)
-                    if "." in mid:
-                        ids.add(mid.split(".")[0])
         except Exception:
             pass
     # Fallback to standard base set if KB not found
     if not ids:
-        ids = {"T1190", "T1083", "T1110", "T1110.001", "T1059", "T1595.002", "T1078", "T1003"}
+        ids = {"T1190", "T1083", "T1110.001", "T1059", "T1595.002", "T1078", "T1003"}
     return frozenset(ids)
 
 
+def _load_known_runbooks() -> dict[str, list[str]]:
+    """Derive valid runbook names and their containment options from the knowledge base."""
+    rb_path = Path(__file__).parent.parent / "llm" / "rag" / "knowledge_base" / "soc_runbooks.json"
+    runbooks = {}
+    if rb_path.exists():
+        try:
+            data = json.loads(rb_path.read_text(encoding="utf-8"))
+            for item in data:
+                name = item.get("name")
+                opts = item.get("containment_options", [])
+                if name:
+                    runbooks[name] = opts
+        except Exception:
+            pass
+    if not runbooks:
+        runbooks = {
+            "SQL Injection Incident Response Runbook": ["block_ip", "notify_analyst"],
+            "Brute Force and Credential Spray Runbook": ["block_ip", "reset_credentials", "notify_analyst"],
+            "Path Traversal and LFI Runbook": ["block_ip", "notify_analyst"],
+            "OS Command Injection Critical Response Runbook": ["isolate_host", "block_ip", "notify_analyst"],
+            "Automated Scanner and Reconnaissance Runbook": ["block_ip", "dismiss_alert", "notify_analyst"],
+            "Compromised Account Response Runbook": ["isolate_host", "reset_credentials", "block_ip", "notify_analyst"],
+        }
+    return runbooks
+
+
 KNOWN_MITRE_IDS: frozenset[str] = _load_known_mitre_ids()
+KNOWN_RUNBOOKS: dict[str, list[str]] = _load_known_runbooks()
 
 
 @dataclass
@@ -89,7 +114,18 @@ class HallucinationChecker:
                 f"confidence_score {report.confidence_score} out of [0, 1]."
             )
 
-        # 5. Semantic Correctness Checks against ground truth (when expected is provided)
+        # 5. Runbook validity and containment options check
+        rb = report.retrieved_runbook.strip() if report.retrieved_runbook else ""
+        if rb and rb not in KNOWN_RUNBOOKS:
+            result.flag(
+                f"Unknown runbook '{rb}' (not found in knowledge base)."
+            )
+        elif rb and report.suggested_action not in KNOWN_RUNBOOKS[rb]:
+            result.flag(
+                f"Action '{report.suggested_action}' is not permitted by runbook '{rb}' (permitted: {KNOWN_RUNBOOKS[rb]})."
+            )
+
+        # 6. Semantic Correctness Checks against ground truth (when expected is provided)
         if expected and not expected.get("hallucination_detected"):
             # Check expected technique ID
             exp_mid = expected.get("mitre_technique_id")

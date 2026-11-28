@@ -64,7 +64,8 @@ class LogFeatureExtractor(BaseEstimator, TransformerMixin):
 
     def transform(self, X: pd.DataFrame) -> np.ndarray:
         """Extract features from DataFrame."""
-        df = X.copy()
+        df = X.copy().reset_index(drop=True)
+        df["_pos"] = range(len(df))
 
         # Ensure timestamp is datetime
         if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
@@ -98,9 +99,8 @@ class LogFeatureExtractor(BaseEstimator, TransformerMixin):
         df = df.sort_values("timestamp")
         
         # Calculate rolling request rates per IP using time-based window
-        rolling_reqs = []
-        rolling_errors = []
-        rolling_distinct_urls = []
+        df["ip_req_count_window"] = 1.0
+        df["ip_error_count_window"] = 0.0
 
         # Fast group-wise rolling calculation
         for ip, group in df.groupby("source_ip"):
@@ -110,14 +110,15 @@ class LogFeatureExtractor(BaseEstimator, TransformerMixin):
             req_cnt = indexed["source_ip"].rolling(f"{self.window_seconds}s").count()
             err_cnt = indexed["is_error"].rolling(f"{self.window_seconds}s").sum()
             
-            # Map back using original index
-            for idx, r_val, e_val in zip(group.index, req_cnt, err_cnt):
-                df.loc[idx, "ip_req_count_window"] = r_val
-                df.loc[idx, "ip_error_count_window"] = e_val
+            df.loc[group.index, "ip_req_count_window"] = req_cnt.values
+            df.loc[group.index, "ip_error_count_window"] = err_cnt.values
 
         df["ip_req_count_window"] = df["ip_req_count_window"].fillna(1)
         df["ip_error_count_window"] = df["ip_error_count_window"].fillna(0)
         df["ip_error_rate_window"] = df["ip_error_count_window"] / df["ip_req_count_window"]
+
+        # Restore original order before extracting columns
+        df = df.sort_values("_pos")
 
         # Final feature column selection
         feature_cols = [

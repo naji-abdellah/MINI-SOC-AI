@@ -92,7 +92,11 @@ class TriageCoordinator:
         # In naive prompt mode (used for break-it test demonstration), skip deterministic policy intervention
         # to observe raw LLM vulnerability, but enforce it in standard/hardened operation.
         if not use_naive_prompt:
-            report = self.policy.sanitize_report(report, rule_severity=rule_sev)
+            report = self.policy.sanitize_report(
+                report,
+                rule_severity=rule_sev,
+                allowed_containment_actions=rag_context.allowed_containment_actions,
+            )
 
         # 5. Approval Gate — create pending approval request with target IP/entity
         target = alert_data.get("source_ip") or alert_data.get("target_user")

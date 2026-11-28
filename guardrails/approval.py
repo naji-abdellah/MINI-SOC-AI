@@ -72,7 +72,14 @@ class ApprovalGate:
         report: TriageReport,
         target_entity: Optional[str] = None,
     ) -> ApprovalRequest:
-        """Create a pending approval request for *report*."""
+        """Create a pending approval request for *report*, enforcing uniqueness on alert_id."""
+        existing = self._conn.execute(
+            "SELECT request_id FROM approvals WHERE alert_id = ? AND status = 'pending'",
+            [report.alert_id],
+        ).fetchall()
+        if existing:
+            return self._fetch(existing[0][0])
+
         req = ApprovalRequest(
             alert_id=report.alert_id,
             suggested_action=report.suggested_action,
@@ -80,6 +87,24 @@ class ApprovalGate:
         )
         self._upsert(req)
         return req
+
+    def close(self) -> None:
+        """Close the underlying DuckDB connection cleanly."""
+        if hasattr(self, "_conn") and self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    def __enter__(self) -> ApprovalGate:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
 
     def approve(self, request_id: str, analyst: str) -> ApprovalRequest:
         """Mark a pending request as approved.

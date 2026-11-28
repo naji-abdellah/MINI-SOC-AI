@@ -89,6 +89,20 @@ class TestPolicyEnforcer:
             result = enforcer.sanitize_report(report)
             assert result.suggested_action == action
 
+    def test_policy_enforcer_custom_and_env_allowlist(self, monkeypatch):
+        """PolicyEnforcer respects explicit allow-list or ACTION_ALLOWLIST env var."""
+        # Explicit allowlist
+        custom_enforcer = PolicyEnforcer(allowed_actions=["block_ip"])
+        assert custom_enforcer.validate_action("block_ip")
+        assert not custom_enforcer.validate_action("isolate_host")
+
+        # Env allowlist
+        monkeypatch.setenv("ACTION_ALLOWLIST", "reset_credentials,notify_analyst")
+        env_enforcer = PolicyEnforcer()
+        assert env_enforcer.validate_action("reset_credentials")
+        assert env_enforcer.validate_action("notify_analyst")
+        assert not env_enforcer.validate_action("block_ip")
+
 
 # ---------------------------------------------------------------------------
 # ApprovalGate tests
@@ -140,6 +154,15 @@ class TestApprovalGate:
         fetched = gate.get(req.request_id)
         assert fetched.request_id == req.request_id
         assert fetched.alert_id == "roundtrip-01"
+
+    def test_approval_gate_uniqueness_on_pending_alert_id(self):
+        """Re-submitting the same alert_id while still pending returns existing request without duplicating."""
+        gate = self._gate()
+        report = _make_report(alert_id="unique-alert-123")
+        req1 = gate.submit(report)
+        req2 = gate.submit(report)
+        assert req1.request_id == req2.request_id, "Pending approvals for the same alert must be unique"
+        gate.close()
 
     def test_approval_gate_missing_request_raises(self):
         """Fetching a non-existent ID must raise KeyError."""

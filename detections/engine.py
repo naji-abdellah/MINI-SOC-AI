@@ -138,8 +138,10 @@ class DetectionEngine:
 
         elif spec.type == DetectionType.THRESHOLD:
             group_cols = ", ".join(spec.group_by)
+            window_sec = spec.time_window_seconds or 300
             return f"""
                 SELECT {group_cols},
+                       time_bucket(INTERVAL '{window_sec} seconds', timestamp) as time_window,
                        count(*) as event_count,
                        min(timestamp) as first_seen,
                        max(timestamp) as last_seen,
@@ -148,7 +150,7 @@ class DetectionEngine:
                        string_agg(DISTINCT coalesce(http_url, raw_event), ' | ') as sample_evidence
                 FROM events
                 WHERE {where_clause}
-                GROUP BY {group_cols}
+                GROUP BY {group_cols}, time_window
                 HAVING count(*) >= {spec.threshold_count}
             """
 

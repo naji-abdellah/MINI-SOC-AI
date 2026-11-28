@@ -20,6 +20,9 @@ BENIGN_URLS = [
     "/products/search?q=headphones",
     "/products/search?q=O%27Reilly+Books",
     "/products/search?q=C%2B%2B+Programming",
+    "/products/search?q=credit+union+card+benefits",
+    "/products/search?q=select+style+shoes",
+    "/products/search?q=cat+and+dog+accessories",
     "/rest/products/search?q=apple",
     "/rest/products/search?q=banana&category=fruit",
     "/about.html",
@@ -40,7 +43,9 @@ BENIGN_URLS = [
     "/checkout",
     "/blog/posts/2026-announcement",
     "/docs/api-reference",
+    "/docs/cli-tools?cmd=whoami-usage",
     "/terms-and-conditions",
+    "/faq?topic=environment-config",
 ]
 
 BENIGN_UAS = [
@@ -49,6 +54,11 @@ BENIGN_UAS = [
     "Mozilla/5.0 (X11; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "curl/8.4.0",
+    "curl/7.88.1",
+    "python-requests/2.31.0",
+    "PostmanRuntime/7.36.0",
+    "kube-probe/1.28",
 ]
 
 # Attack vectors
@@ -57,16 +67,23 @@ ATTACK_VECTORS = {
         "/vulnerabilities/sqli/?id=1' UNION SELECT null,version()--&Submit=Submit",
         "/vulnerabilities/sqli/?id=1' UNION SELECT user,password FROM users--",
         "/vulnerabilities/sqli/?id=1' OR 1=1--&Submit=Submit",
+        "/vulnerabilities/sqli/?id=1%27%20OR%201=1--%20&Submit=Submit",
+        "/vulnerabilities/sqli/?id=1%27%20uNiOn%20sElEcT%20null,version()--",
         "/rest/products/search?q=' OR 1=1--",
+        "/rest/products/search?q=apple%27%20UNION/**/SELECT/**/1,2,3--",
         "/products?id=1; WAITFOR DELAY '0:0:5'--",
+        "/products?id=1%20AND%20SLEEP(5)--",
         "/api/items?id=-1 OR 2>1#",
+        "/search.php?id=-1+OR+17-7=10",
     ],
     "lfi": [
         "/vulnerabilities/fi/?page=../../../../../../etc/passwd",
         "/vulnerabilities/fi/?page=../../../../../../etc/shadow",
         "/vulnerabilities/fi/?page=..%2f..%2f..%2fetc%2fpasswd",
+        "/vulnerabilities/fi/?page=....//....//....//etc/passwd",
         "/vulnerabilities/fi/?page=php://filter/convert.base64-encode/resource=index.php",
         "/preview?file=../../../../windows/win.ini",
+        "/download?file=..%252f..%252f..%252fetc%252fpasswd",
     ],
     "cmdi": [
         "/vulnerabilities/exec/?ip=127.0.0.1;cat /etc/passwd",

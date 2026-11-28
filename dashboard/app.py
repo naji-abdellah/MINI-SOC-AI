@@ -12,6 +12,7 @@ Launch with:
 
 from __future__ import annotations
 
+import html
 import os
 import sys
 from pathlib import Path
@@ -507,16 +508,18 @@ elif page == "Human Approval Gate":
         exec_info = st.session_state["last_soar_execution"]
         is_app = exec_info.get("status") == "approved"
         border_col = "rgba(34, 197, 94, 0.4)" if is_app else "rgba(239, 68, 68, 0.4)"
-        status_tag = '<span style="color:#4ade80; font-weight:600;">[CONTAINMENT EXECUTED]</span>' if is_app else '<span style="color:#f87171; font-weight:600;">[CONTAINMENT ABORTED]</span>'
+        status_tag = '<span style="color:#4ade80; font-weight:600;">[SIMULATED CONTAINMENT EXECUTED]</span>' if is_app else '<span style="color:#f87171; font-weight:600;">[SIMULATED CONTAINMENT ABORTED]</span>'
+        escaped_cmd = html.escape(str(exec_info.get('containment_cmd', '')))
+        escaped_hash = html.escape(str(exec_info.get('audit_hash', ''))[:28])
         st.markdown(
             f"""
             <div style="background:#09090b; border:1px solid {border_col}; border-radius:8px; padding:18px; margin-bottom:24px; font-family:monospace; font-size:13px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
                 <div style="color:#71717a; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>SOAR Automated Containment Dispatcher — Execution Receipt</span>
+                    <span>SOAR Automated Containment Dispatcher — Simulated Execution Receipt</span>
                     {status_tag}
                 </div>
-                <div style="color:#e4e4e7; margin-bottom:6px; font-weight:500;">&gt; {exec_info.get('containment_cmd', '')}</div>
-                <div style="color:#71717a; font-size:12px;">&gt; Cryptographic Chain: Block SHA-256 <span style="color:#f97316;">{exec_info.get('audit_hash', '')[:28]}...</span> [VERIFIED & SEALED]</div>
+                <div style="color:#e4e4e7; margin-bottom:6px; font-weight:500;">&gt; {escaped_cmd}</div>
+                <div style="color:#71717a; font-size:12px;">&gt; Cryptographic Chain: Block SHA-256 <span style="color:#f97316;">{escaped_hash}...</span> [VERIFIED & SEALED]</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -692,16 +695,19 @@ elif page == "Analyst Feedback Loop":
         fb_info = st.session_state["last_feedback_status"]
         base_t = fb_info.get("baseline_threshold", 0.50)
         cal_t = fb_info.get("threshold", 0.50)
+        escaped_aid = html.escape(str(fb_info.get('alert_id', '')))
+        escaped_fp_red = html.escape(str(fb_info.get('fp_reduction', '')))
+        fp_label = 'False Positive (Suppressed)' if fb_info.get('was_fp') else 'True Positive (Confirmed)'
         st.markdown(
             f"""
             <div style="background:#09090b; border:1px solid rgba(249,115,22,0.4); border-radius:8px; padding:16px; margin-bottom:24px; font-family:monospace; font-size:12px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
                 <div style="color:#f97316; font-weight:600; margin-bottom:8px; display:flex; justify-content:space-between;">
-                    <span>Active Learning Model Calibration — Pipeline Receipt</span>
-                    <span style="color:#4ade80;">[MODEL WEIGHTS CALIBRATED]</span>
+                    <span>Active Learning Calibration — Decision Threshold Update</span>
+                    <span style="color:#4ade80;">[DECISION THRESHOLD CALIBRATED]</span>
                 </div>
-                <div style="color:#e4e4e7; margin-bottom:4px;">&gt; Incident ID: {fb_info['alert_id']} marked as <strong>{'False Positive (Suppressed)' if fb_info['was_fp'] else 'True Positive (Confirmed)'}</strong></div>
+                <div style="color:#e4e4e7; margin-bottom:4px;">&gt; Incident ID: {escaped_aid} marked as <strong>{fp_label}</strong></div>
                 <div style="color:#a1a1aa; margin-bottom:4px;">&gt; Anomaly decision threshold adjusted: {base_t:.2f} &rarr; <span style="color:#f97316; font-weight:600;">{cal_t:.3f}</span></div>
-                <div style="color:#71717a;">&gt; Measured validation noise suppression ({fb_info.get('feedback_count', 1)} ground truth labels): <span style="color:#4ade80; font-weight:600;">{fb_info['fp_reduction']}</span></div>
+                <div style="color:#71717a;">&gt; Measured validation noise suppression ({fb_info.get('feedback_count', 1)} ground truth labels): <span style="color:#4ade80; font-weight:600;">{escaped_fp_red}</span></div>
             </div>
             """,
             unsafe_allow_html=True,

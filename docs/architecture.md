@@ -31,7 +31,7 @@ flowchart TD
 
     subgraph AI_Triage["Local AI Triage (Ollama)"]
         ALERTS --> TRIAGE["Triage Coordinator"]
-        RAG[("Vector Store (FAISS/Chroma)<br/>MITRE ATT&CK & Runbooks")] -->|Context Retrieval| TRIAGE
+        RAG[("In-Memory Grounded KB<br/>MITRE ATT&CK & Runbooks")] -->|Context Retrieval| TRIAGE
         TRIAGE -->|Alert + Context| LLM["Ollama 3B (Qwen2.5 / Llama 3.2)"]
         LLM -->|Raw Completion| VALID["Schema Validator (Pydantic)"]
     end
@@ -92,7 +92,7 @@ Because running all components simultaneously would exceed 8 GB of RAM and trigg
 
 ### 3.3 LLM Triage & Local RAG
 - **Model:** Quantized small LLM (e.g., `qwen2.5:3b` or `llama3.2:3b` via Ollama).
-- **RAG Store:** Chroma or FAISS indexing MITRE ATT&CK technique descriptions, detection guidance, and standard operating procedures (SOC runbooks).
+- **RAG Store:** Deterministic in-memory grounded retrieval indexing MITRE ATT&CK technique descriptions, detection guidance, and standard operating procedures (SOC runbooks) without external daemon overhead.
 - **Output Contract:** Enforces a rigid JSON schema:
   - `incident_summary` (string)
   - `mitre_attack_technique` (ID & name)
@@ -102,10 +102,10 @@ Because running all components simultaneously would exceed 8 GB of RAM and trigg
   - `reasoning` (brief evidence citing retrieved context)
 
 ### 3.4 Guardrails, Evaluation & Tamper-Evident Audit
-- **Prompt Injection Defense:** Strict structural boundary tag encapsulation (`<UNTRUSTED_LOG_PAYLOAD>`), quarantine sanitization, and deterministic policy layer defense-in-depth.
-- **Action Allow-List & Policy Floors:** The LLM cannot execute unbounded commands. Only allowed actions (`block_ip`, `isolate_host`, `quarantine_file`, `notify_analyst`, `dismiss_alert`) are accepted. Furthermore, the deterministic policy layer enforces severity floors (preventing downgrades of HIGH/CRITICAL alerts) and restricts alert dismissal for high-confidence threats.
+- **Prompt Injection Defense:** Strict structural boundary tag encapsulation (`<untrusted_event_evidence>`), quarantine sanitization, attacker-controlled entity isolation (`source_ip`, `target_user`), and deterministic policy layer defense-in-depth.
+- **Action Allow-List & Policy Floors:** The LLM cannot execute unbounded commands. Only allowed actions (`block_ip`, `isolate_host`, `reset_credentials`, `notify_analyst`, `dismiss_alert`) are accepted. Furthermore, the deterministic policy layer enforces severity floors (preventing downgrades of HIGH/CRITICAL alerts) and restricts alert dismissal for high-confidence threats.
 - **Human-in-the-Loop:** Containment actions require explicit human analyst approval with clear target entity definitions before SOAR command execution.
-- **Cryptographic Hash-Chained Audit Trail:** Every event record binds `prev_hash`, `entry_id`, `entry_type`, `timestamp`, and `canonical_payload` via SHA-256 (with HMAC support). Modifying or tampering with any metadata or payload breaks the chain mathematically.
+- **Cryptographic Hash-Chained Audit Trail:** Every event record binds `seq`, `prev_hash`, `entry_id`, `entry_type`, `timestamp`, and `canonical_payload` via SHA-256 (with HMAC support) and cross-process file locking. Modifying metadata, tampering payloads, or tail truncating breaks chain verification mathematically.
 - **Automated LLM Evaluation:** Regression testing, dynamic MITRE correctness validation, and hallucination detection powered by the native Python eval suite (`evals/run_evals.py`).
 
 ### 3.5 Analyst Dashboard
